@@ -29,6 +29,15 @@
 #define ADS1220_MISO_PIN 14 // DOUT on ADS1220
 #define ADS1220_DRDY_PIN 15
 
+// Operational Commands
+#define ADS1220_WREG_OPCODE 0x43 // write 4 registers starting at 0. 
+#define ADS1220_RREG_OPCODE 0x23 // read 4 registers starting at 0.
+#define ADS1220_RESET_OPCODE 0x07
+#define ADS1220_START_SYNC_OPCODE 0x09
+#define ADS1220_PWDN_OPCODE 0x03
+#define ADS1220_RDATA_OPCODE 0x10
+
+
 // Register addresses
 #define ADS1220_REGADDR_CFG0 0x00
 #define ADS1220_REGADDR_CFG1 0x01
@@ -42,7 +51,10 @@
 #define ADS1220_REGDEFAULT_CFG3 0x00 // 0b000|000|0|0 :[IDAC1 disabled, IDAC2 disabled, DRDY mode on DRDY only, Reserved (0)]
 
 // Function Definitions
+void ads_spi_init(void);
 
+void ads1220_init_default_regs(void);
 
+void ads1220_check_written_regs(void);
 
 #endif // ADS1220_H__

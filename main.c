@@ -78,11 +78,11 @@
 #define NRF_LOG_MODULE_NAME "APP"
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
-#warning ("CHECK LFCLK & LED DEFS IN custom_board.h")
+#warning("CHECK LFCLK & LED DEFS IN custom_board.h")
 #include "ble_dis.h"
+#include "nrf_delay.h"
 #include "nrf_drv_gpiote.h"
 #include "uicr_config.h"
-#include "nrf_delay.h"
 #define DEVICE_MODEL_NUMBERSTR "Version 3.1"
 #define DEVICE_FIRMWARE_STRING "Version 13.1.0"
 static bool m_connected = false;
@@ -96,11 +96,11 @@ ble_sg_t m_sg;
 static nrf_saadc_value_t m_buffer_pool[SAMPLES_IN_BUFFER];
 static uint32_t m_adc_evt_counter;
 #endif
-#define BATTERY_LEVEL_MEAS_INTERVAL APP_TIMER_TICKS(50) /**< Battery level measurement interval (ticks). */
-APP_TIMER_DEF(m_battery_timer_id);                        /**< Battery timer. */
+#define BATTERY_LEVEL_MEAS_INTERVAL APP_TIMER_TICKS(1000) /**< Battery level measurement interval (ticks). */
+APP_TIMER_DEF(m_battery_timer_id);                      /**< Battery timer. */
 #if defined(BLE_BAS_ENABLED) && BLE_BAS_ENABLED == 1
 #include "ble_bas.h"
-static ble_bas_t m_bas;                                   /**< Structure used to identify the battery service. */
+static ble_bas_t m_bas; /**< Structure used to identify the battery service. */
 #endif
 
 #if defined(APP_TIMER_SAMPLING) && APP_TIMER_SAMPLING == 1
@@ -111,16 +111,16 @@ static uint16_t m_samples;
 
 #define APP_FEATURE_NOT_SUPPORTED BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2 /**< Reply when unsupported features are requested. */
 
-#define DEVICE_NAME "nRF52-StrGg"           //"nRF52_SG"         /**< Name of device. Will be included in the advertising data. */
+#define DEVICE_NAME "nRF52-GSR" //"nRF52_SG"         /**< Name of device. Will be included in the advertising data. */
 
 #define MANUFACTURER_NAME "Potato Labs" /**< Manufacturer. Will be passed to Device Information Service. */
 #define APP_ADV_INTERVAL 300            /**< The advertising interval (in units of 0.625 ms. This value corresponds to 187.5 ms). */
 #define APP_ADV_TIMEOUT_IN_SECONDS 180  /**< The advertising timeout in units of seconds. */
 
 #define MIN_CONN_INTERVAL MSEC_TO_UNITS(7.5, UNIT_1_25_MS) /**< Minimum acceptable connection interval (0.1 seconds). */
-#define MAX_CONN_INTERVAL MSEC_TO_UNITS(20, UNIT_1_25_MS) /**< Maximum acceptable connection interval (0.2 second). */
-#define SLAVE_LATENCY 0                                   /**< Slave latency. */
-#define CONN_SUP_TIMEOUT MSEC_TO_UNITS(4000, UNIT_10_MS)  /**< Connection supervisory timeout (4 seconds). */
+#define MAX_CONN_INTERVAL MSEC_TO_UNITS(20, UNIT_1_25_MS)  /**< Maximum acceptable connection interval (0.2 second). */
+#define SLAVE_LATENCY 0                                    /**< Slave latency. */
+#define CONN_SUP_TIMEOUT MSEC_TO_UNITS(4000, UNIT_10_MS)   /**< Connection supervisory timeout (4 seconds). */
 
 #define CONN_CFG_TAG 1 /**< A tag that refers to the BLE stack configuration we set with @ref sd_ble_cfg_set. Default tag is @ref BLE_CONN_CFG_TAG_DEFAULT. */
 
@@ -147,6 +147,9 @@ static nrf_ble_gatt_t m_gatt;                            /**< GATT module instan
 static ble_uuid_t m_adv_uuids[] =
     {
         {BLE_UUID_SG_MEASUREMENT_SERVICE, BLE_UUID_TYPE_BLE},
+#if defined(BLE_BAS_ENABLED) && BLE_BAS_ENABLED == 1
+        {BLE_UUID_BATTERY_SERVICE, BLE_UUID_TYPE_BLE},
+#endif
         {BLE_UUID_DEVICE_INFORMATION_SERVICE, BLE_UUID_TYPE_BLE}}; /**< Universally unique service identifiers. */
 
 static void advertising_start(void);
@@ -212,12 +215,12 @@ static void timers_init(void) {
   APP_ERROR_CHECK(err_code);
 #endif
 
-//#if defined(BLE_BAS_ENABLED) && BLE_BAS_ENABLED == 1
+  //#if defined(BLE_BAS_ENABLED) && BLE_BAS_ENABLED == 1
   err_code = app_timer_create(&m_battery_timer_id,
       APP_TIMER_MODE_REPEATED,
       battery_level_meas_timeout_handler);
   APP_ERROR_CHECK(err_code);
-//#endif
+  //#endif
 }
 
 /**@brief Function for the GAP initialization.
@@ -261,7 +264,7 @@ static void gatt_init(void) {
  */
 static void services_init(void) {
   uint32_t err_code;
-/**@Device Information Service:*/
+  /**@Device Information Service:*/
   ble_sg_service_init(&m_sg);
 
 #if defined(BLE_BAS_ENABLED) && BLE_BAS_ENABLED == 1
@@ -357,10 +360,10 @@ static void application_timers_start(void) {
   APP_ERROR_CHECK(err_code);
 #endif
 
-//#if defined(BLE_BAS_ENABLED) && BLE_BAS_ENABLED == 1
+  //#if defined(BLE_BAS_ENABLED) && BLE_BAS_ENABLED == 1
   err_code = app_timer_start(m_battery_timer_id, BATTERY_LEVEL_MEAS_INTERVAL, NULL);
   APP_ERROR_CHECK(err_code);
-//#endif
+  //#endif
 }
 
 /**@brief Function for putting the chip into sleep mode.
@@ -672,14 +675,16 @@ void saadc_callback(nrf_drv_saadc_evt_t const *p_event) {
     for (i = 0; i < SAMPLES_IN_BUFFER; i++) {
       sum += p_event->data.done.p_buffer[i];
     }
-    NRF_LOG_INFO("%d\r\n", sum/4);
+    NRF_LOG_INFO("%d\r\n", sum / 4);
     //Transmit via BLuetooth.
-    int16_t sum_short = (int16_t) (sum/4); 
-    memcpy(&m_sg.sg_ch1_buffer[m_sg.sg_ch1_count], &sum_short, 2);
-    m_sg.sg_ch1_count += 2;
-    if (m_sg.sg_ch1_count == SG_PACKET_LENGTH) {
-      m_sg.sg_ch1_count = 0;
-      ble_sg_update_1ch(&m_sg); 
+    int16_t sum_short = (int16_t)(sum / 4);
+    m_bas.battery_level = p_event->data.done.p_buffer[3];
+    err_code = ble_bas_battery_level_update(&m_bas);
+    if ((err_code != NRF_SUCCESS) &&
+        (err_code != NRF_ERROR_INVALID_STATE) &&
+        (err_code != NRF_ERROR_RESOURCES) &&
+        (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING)) {
+      APP_ERROR_HANDLER(err_code);
     }
     //Transmit Packet:
     nrf_gpio_pin_set(BATTERY_LOAD_SWITCH_CTRL_PIN); //LOAD SWITCH OFF
@@ -691,13 +696,13 @@ void saadc_init(void) {
   ret_code_t err_code;
   nrf_drv_saadc_config_t saadc_config;
   //TODO: Adjust Configuration: SAADC
-  saadc_config.low_power_mode = false;                    //Enable low power mode.
+  saadc_config.low_power_mode = true;                    //Enable low power mode.
   saadc_config.resolution = NRF_SAADC_RESOLUTION_12BIT;   //Set SAADC resolution to 12-bit. This will make the SAADC output values from 0 (when input voltage is 0V) to 2^12=2048 (when input voltage is 3.6V for channel gain setting of 1/6).
   saadc_config.oversample = NRF_SAADC_OVERSAMPLE_4X;      //Set oversample to 4x. This will make the SAADC output a single averaged value when the SAMPLE task is triggered 4 times.
   saadc_config.interrupt_priority = APP_IRQ_PRIORITY_LOW; //Set SAADC interrupt to low priority.
 
   nrf_saadc_channel_config_t channel_config =
-      NRF_DRV_SAADC_DEFAULT_CHANNEL_CONFIG_SE(NRF_SAADC_INPUT_AIN3);
+      NRF_DRV_SAADC_DEFAULT_CHANNEL_CONFIG_SE(NRF_SAADC_INPUT_AIN2);
 
   err_code = nrf_drv_saadc_init(&saadc_config, saadc_callback);
   APP_ERROR_CHECK(err_code);
@@ -715,7 +720,7 @@ void saadc_init(void) {
   //  err_code = nrf_drv_saadc_buffer_convert(m_buffer_pool[1], SAMPLES_IN_BUFFER);
   //  APP_ERROR_CHECK(err_code);
 
-  nrf_drv_saadc_calibrate_offset();  //Calibrate before initialization. 
+  nrf_drv_saadc_calibrate_offset(); //Calibrate before initialization.
 }
 #endif
 

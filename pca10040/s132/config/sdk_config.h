@@ -98,7 +98,7 @@
  
 
 #ifndef BLE_BAS_ENABLED
-#define BLE_BAS_ENABLED 0
+#define BLE_BAS_ENABLED 1
 #endif
 
 // <q> BLE_CSCS_ENABLED  - ble_cscs - Cycling Speed and Cadence Service
@@ -2153,7 +2153,7 @@
 // <e> SPI0_ENABLED - Enable SPI0 instance
 //==========================================================
 #ifndef SPI0_ENABLED
-#define SPI0_ENABLED 0
+#define SPI0_ENABLED 1
 #endif
 #if  SPI0_ENABLED
 // <q> SPI0_USE_EASY_DMA  - Use EasyDMA
@@ -3084,7 +3084,7 @@
 #if  APP_TIMER_ENABLED
 
 #ifndef APP_TIMER_SAMPLING
-#define APP_TIMER_SAMPLING 1
+#define APP_TIMER_SAMPLING 0
 #endif
 
 // <o> APP_TIMER_CONFIG_RTC_FREQUENCY  - Configure RTC prescaler.
