@@ -79,14 +79,16 @@
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
 #warning("CHECK LFCLK & LED DEFS IN custom_board.h")
+#include "ads1220.h"
 #include "ble_dis.h"
+#include "ble_sg.h"
 #include "nrf_delay.h"
 #include "nrf_drv_gpiote.h"
 #include "uicr_config.h"
+
 #define DEVICE_MODEL_NUMBERSTR "Version 3.1"
-#define DEVICE_FIRMWARE_STRING "Version 13.1.0"
+#define DEVICE_FIRMWARE_STRING "Version 14.1.0"
 static bool m_connected = false;
-#include "ble_sg.h"
 ble_sg_t m_sg;
 
 #if defined(SAADC_ENABLED) && SAADC_ENABLED == 1
@@ -97,7 +99,7 @@ static nrf_saadc_value_t m_buffer_pool[SAMPLES_IN_BUFFER];
 static uint32_t m_adc_evt_counter;
 #endif
 #define BATTERY_LEVEL_MEAS_INTERVAL APP_TIMER_TICKS(1000) /**< Battery level measurement interval (ticks). */
-APP_TIMER_DEF(m_battery_timer_id);                      /**< Battery timer. */
+APP_TIMER_DEF(m_battery_timer_id);                        /**< Battery timer. */
 #if defined(BLE_BAS_ENABLED) && BLE_BAS_ENABLED == 1
 #include "ble_bas.h"
 static ble_bas_t m_bas; /**< Structure used to identify the battery service. */
@@ -696,7 +698,7 @@ void saadc_init(void) {
   ret_code_t err_code;
   nrf_drv_saadc_config_t saadc_config;
   //TODO: Adjust Configuration: SAADC
-  saadc_config.low_power_mode = true;                    //Enable low power mode.
+  saadc_config.low_power_mode = true;                     //Enable low power mode.
   saadc_config.resolution = NRF_SAADC_RESOLUTION_12BIT;   //Set SAADC resolution to 12-bit. This will make the SAADC output values from 0 (when input voltage is 0V) to 2^12=2048 (when input voltage is 3.6V for channel gain setting of 1/6).
   saadc_config.oversample = NRF_SAADC_OVERSAMPLE_4X;      //Set oversample to 4x. This will make the SAADC output a single averaged value when the SAMPLE task is triggered 4 times.
   saadc_config.interrupt_priority = APP_IRQ_PRIORITY_LOW; //Set SAADC interrupt to low priority.
@@ -727,6 +729,46 @@ void saadc_init(void) {
 static void wait_for_event(void) {
   (void)sd_app_evt_wait();
 }
+
+void drdy_pin_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
+  UNUSED_PARAMETER(pin);
+  UNUSED_PARAMETER(action);
+  
+//  NRF_LOG_INFO("DRDY PIN DETECT! \r\n");
+
+  get_gsr_data(&m_sg);
+
+  if (m_sg.sg_ch1_count == SG_PACKET_LENGTH) {
+    m_sg.sg_ch1_count = 0;
+    ble_sg_update_1ch(&m_sg);
+  }
+
+}
+
+static void ads1220_gpio_init(void) {
+  nrf_gpio_pin_dir_set(ADS1220_DRDY_PIN, NRF_GPIO_PIN_DIR_INPUT);
+  uint32_t err_code;
+  if (!nrf_drv_gpiote_is_init()) {
+    err_code = nrf_drv_gpiote_init();
+  }
+  NRF_LOG_RAW_INFO(" nrf_drv_gpiote_init: %d\r\n", err_code);
+  NRF_LOG_FLUSH();
+  APP_ERROR_CHECK(err_code);
+  bool is_high_accuracy = true;
+  nrf_drv_gpiote_in_config_t in_config = GPIOTE_CONFIG_IN_SENSE_HITOLO(is_high_accuracy);
+  in_config.is_watcher = true;
+  in_config.pull = NRF_GPIO_PIN_NOPULL;
+  err_code = nrf_drv_gpiote_in_init(ADS1220_DRDY_PIN, &in_config, drdy_pin_handler);
+  NRF_LOG_RAW_INFO(" nrf_drv_gpiote_in_init: %d: \r\n", err_code);
+  NRF_LOG_FLUSH();
+  APP_ERROR_CHECK(err_code);
+  nrf_drv_gpiote_in_event_enable(ADS1220_DRDY_PIN, true);
+  //#ifdef BATTERY_LOAD_SWITCH_CTRL_PIN
+  //  nrf_gpio_cfg_output(BATTERY_LOAD_SWITCH_CTRL_PIN);
+  //  nrf_gpio_pin_set(BATTERY_LOAD_SWITCH_CTRL_PIN); //OFF
+  //#endif
+}
+
 /**@brief Function for application main entry.
  */
 int main(void) {
@@ -736,12 +778,21 @@ int main(void) {
   log_init();
   timers_init();
   ble_stack_init();
+  ads1220_gpio_init();
   gap_params_init();
   gatt_init();
   advertising_init();
   services_init();
   conn_params_init();
   m_sg.sg_ch1_count = 0;
+  // ADS1220 Functions:
+  //Reset?
+  ads_spi_init();
+  ads1220_reset();              // Reset to ensure device is properly working
+  ads1220_init_default_regs();  // Write default registers
+  ads1220_check_written_regs(); //Sanity Check. Dump written registers
+  ads1220_start_sync();         // start converting in continuous mode
+  // Wait for DRDY.
 
 #if defined(SAADC_ENABLED) && SAADC_ENABLED == 1
   saadc_init();

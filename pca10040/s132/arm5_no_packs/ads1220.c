@@ -22,6 +22,7 @@
 #include "ads1220.h"
 #include "app_error.h"
 #include "app_util_platform.h"
+#include "ble_sg.h"
 #include "nrf_delay.h"
 #include "nrf_drv_spi.h"
 #include "nrf_gpio.h"
@@ -67,23 +68,21 @@ void ads_spi_init(void) {
 void ads1220_init_default_regs(void) {
   uint8_t i = 0;
   uint8_t num_registers = 4;
-  uint8_t txrx_size = num_registers + 2;
+  uint8_t txrx_size = num_registers + 1;
   uint8_t tx_data_spi[txrx_size]; //Size = 6 bytes
   uint8_t rx_data_spi[txrx_size]; //Size = 6 bytes
-  uint8_t opcode_write = ADS1220_WREG_OPCODE;
 
   for (i = 0; i < txrx_size; i++) {
     tx_data_spi[i] = 0; // Set array to zero.
     rx_data_spi[i] = 0; // Set array to zero.
   }
 
-  tx_data_spi[0] = opcode_write;
-  tx_data_spi[1] = num_registers - 1; //is the number of registers to write ? 1. (OPCODE2)
+  tx_data_spi[0] = ADS1220_WREG_OPCODE;
 
-  memcpy(&tx_data_spi[2], &ads1220_default_regs[0], num_registers);
+  memcpy(&tx_data_spi[1], &ads1220_default_regs[0], num_registers);
 
   spi_xfer_done = false;
-  APP_ERROR_CHECK(nrf_drv_spi_transfer(&spi, tx_data_spi, num_registers + 2, rx_data_spi, num_registers + 2));
+  APP_ERROR_CHECK(nrf_drv_spi_transfer(&spi, tx_data_spi, num_registers + 1, rx_data_spi, num_registers + 1));
   nrf_delay_ms(10);
   while (!spi_xfer_done) {
     __WFE();
@@ -110,5 +109,73 @@ void ads1220_check_written_regs(void) {
     __WFE();
   }
   NRF_LOG_INFO("RX_DATA_SPI: \n");
-  NRF_LOG_HEXDUMP_DEBUG(&rx_data_spi, 4);
+  NRF_LOG_HEXDUMP_DEBUG(&rx_data_spi, 5);
 }
+
+void ads1220_reset(void) {
+  uint8_t tx_data_spi;
+  uint8_t rx_data_spi;
+
+  tx_data_spi = ADS1220_RESET_OPCODE;
+
+  spi_xfer_done = false;
+  APP_ERROR_CHECK(nrf_drv_spi_transfer(&spi, &tx_data_spi, 1, &rx_data_spi, 1));
+  while (!spi_xfer_done) {
+    __WFE();
+  }
+  NRF_LOG_INFO(" Reset ADS1220..\r\n");
+}
+
+void ads1220_start_sync(void) {
+  uint8_t tx_data_spi;
+  uint8_t rx_data_spi;
+
+  tx_data_spi = ADS1220_START_SYNC_OPCODE;
+
+  spi_xfer_done = false;
+  APP_ERROR_CHECK(nrf_drv_spi_transfer(&spi, &tx_data_spi, 1, &rx_data_spi, 1));
+  while (!spi_xfer_done) {
+    __WFE();
+  }
+  NRF_LOG_INFO(" Start/Sync ADS1220..\r\n");
+}
+
+void ads1220_powerdown(void) {
+  uint8_t tx_data_spi;
+  uint8_t rx_data_spi;
+
+  tx_data_spi = ADS1220_PWDN_OPCODE;
+
+  spi_xfer_done = false;
+  APP_ERROR_CHECK(nrf_drv_spi_transfer(&spi, &tx_data_spi, 1, &rx_data_spi, 1));
+  while (!spi_xfer_done) {
+    __WFE();
+  }
+  NRF_LOG_INFO(" Powerdown ADS1220..\r\n");
+}
+
+void get_gsr_data(ble_sg_t *p_sg) {
+  uint8_t rx_data[3];
+  spi_xfer_done = false;
+  APP_ERROR_CHECK(nrf_drv_spi_transfer(&spi, NULL, NULL, rx_data, 3));
+  while (!spi_xfer_done) {
+    __WFE();
+  }
+  memcpy_fast(&p_sg->sg_ch1_buffer[p_sg->sg_ch1_count], &rx_data[0], 3);
+  NRF_LOG_INFO("p_sg_data = 0x%X%X%X \r\n", rx_data[0], rx_data[1], rx_data[2]);
+  p_sg->sg_ch1_count += 3;
+}
+
+//void ads1220_readdata(void) {
+//  uint8_t tx_data_spi;
+//  uint8_t rx_data_spi;
+//
+//  tx_data_spi = ADS1220_RDATA_OPCODE;
+//
+//  spi_xfer_done = false;
+//  APP_ERROR_CHECK(nrf_drv_spi_transfer(&spi, &tx_data_spi, 1, &rx_data_spi, 1));
+//  while (!spi_xfer_done) {
+//    __WFE();
+//  }
+//  NRF_LOG_INFO(" Powerdown ADS1220..\r\n");
+//}

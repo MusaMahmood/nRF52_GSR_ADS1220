@@ -22,6 +22,8 @@
 #ifndef ADS1220_H__
 #define ADS1220_H__
 
+#include "ble_sg.h"
+
 // Pin definitions:
 #define ADS1220_CS_PIN 11
 #define ADS1220_SCLK_PIN 12
@@ -56,5 +58,16 @@ void ads_spi_init(void);
 void ads1220_init_default_regs(void);
 
 void ads1220_check_written_regs(void);
+
+void ads1220_reset(void);
+
+void ads1220_start_sync(void);
+
+void ads1220_powerdown(void);
+
+//void ads1220_readdata(void);
+
+void get_gsr_data(ble_sg_t *p_sg);
+
 
 #endif // ADS1220_H__
