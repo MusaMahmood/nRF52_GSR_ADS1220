@@ -162,20 +162,5 @@ void get_gsr_data(ble_sg_t *p_sg) {
     __WFE();
   }
   memcpy_fast(&p_sg->sg_ch1_buffer[p_sg->sg_ch1_count], &rx_data[0], 3);
-  NRF_LOG_INFO("p_sg_data = 0x%X%X%X \r\n", rx_data[0], rx_data[1], rx_data[2]);
   p_sg->sg_ch1_count += 3;
 }
-
-//void ads1220_readdata(void) {
-//  uint8_t tx_data_spi;
-//  uint8_t rx_data_spi;
-//
-//  tx_data_spi = ADS1220_RDATA_OPCODE;
-//
-//  spi_xfer_done = false;
-//  APP_ERROR_CHECK(nrf_drv_spi_transfer(&spi, &tx_data_spi, 1, &rx_data_spi, 1));
-//  while (!spi_xfer_done) {
-//    __WFE();
-//  }
-//  NRF_LOG_INFO(" Powerdown ADS1220..\r\n");
-//}

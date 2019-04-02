@@ -85,6 +85,7 @@
 #include "nrf_delay.h"
 #include "nrf_drv_gpiote.h"
 #include "uicr_config.h"
+#include "ad5242.h"
 
 #define DEVICE_MODEL_NUMBERSTR "Version 3.1"
 #define DEVICE_FIRMWARE_STRING "Version 14.1.0"
@@ -793,7 +794,11 @@ int main(void) {
   ads1220_check_written_regs(); //Sanity Check. Dump written registers
   ads1220_start_sync();         // start converting in continuous mode
   // Wait for DRDY.
-
+  // AD5242 Init:
+  ad5242_twi_init();
+  ad5242_read_rdac1_value();
+  ad5242_write_rdac1_value(0xFE);
+  ad5242_read_rdac1_value();
 #if defined(SAADC_ENABLED) && SAADC_ENABLED == 1
   saadc_init();
 #endif

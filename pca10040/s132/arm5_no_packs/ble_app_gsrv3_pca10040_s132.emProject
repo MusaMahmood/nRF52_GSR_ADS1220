@@ -122,6 +122,8 @@
     </folder>
     <folder Name="nRF_BLE_Services" />
     <file file_name="ads1220.h" />
+    <file file_name="ad5242.c" />
+    <file file_name="ad5242.h" />
   </project>
   <configuration Name="Internal" hidden="Yes" />
   <configuration Name="nrf52832_xxaa" inherited_configurations="Internal" />
