@@ -86,6 +86,9 @@
 #include "nrf_drv_gpiote.h"
 #include "uicr_config.h"
 #include "ad5242.h"
+#include "tmp116.h"
+
+static nrf_drv_twi_t m_twi = NRF_DRV_TWI_INSTANCE(1);
 
 #define DEVICE_MODEL_NUMBERSTR "Version 3.1"
 #define DEVICE_FIRMWARE_STRING "Version 14.1.0"
@@ -107,7 +110,7 @@ static ble_bas_t m_bas; /**< Structure used to identify the battery service. */
 #endif
 
 #if defined(APP_TIMER_SAMPLING) && APP_TIMER_SAMPLING == 1
-#define TICKS_SAMPLING_INTERVAL APP_TIMER_TICKS(1000)
+#define TICKS_SAMPLING_INTERVAL APP_TIMER_TICKS(50)
 APP_TIMER_DEF(m_sampling_timer_id);
 static uint16_t m_samples;
 #endif
@@ -175,12 +178,10 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t *p_file_name) {
 #if defined(APP_TIMER_SAMPLING) && APP_TIMER_SAMPLING == 1
 static void m_sampling_timeout_handler(void *p_context) {
   UNUSED_PARAMETER(p_context);
-#if defined(APP_TIMER_SAMPLING) && APP_TIMER_SAMPLING == 1
-#if LOG_LOW_DETAIL == 1
-//  NRF_LOG_INFO("SAMPLE RATE = %dHz \r\n", m_samples);
-#endif
-  m_samples = 0;
-#endif
+  // TODO: 
+  uint16_t sample = tmp116_read_data(m_twi);
+  m_samples++;
+  NRF_LOG_INFO("[#%d]=[%d] \r\n", m_samples, sample);
 }
 #endif
 
@@ -796,16 +797,19 @@ int main(void) {
   ads1220_check_written_regs(); //Sanity Check. Dump written registers
   ads1220_start_sync();         // start converting in continuous mode
 // Wait for DRDY.
+
+  
+
 #if defined(SAADC_ENABLED) && SAADC_ENABLED == 1
   saadc_init();
 #endif
   // AD5242 Init:
-  ad5242_twi_init(); 
-  ad5242_write_rdac1_value(0xFF);
-
-  ad5242_twi_uninit();
+  ad5242_twi_init(m_twi); 
+  ad5242_write_rdac1_value(m_twi, 0xFF);
+  ad5242_twi_uninit(m_twi);
   // Initialize TMP Sensor:
-
+  tmp116_twi_init(m_twi);
+  tmp116_set_mode(m_twi);
   // Start execution.
   application_timers_start();
   advertising_start();

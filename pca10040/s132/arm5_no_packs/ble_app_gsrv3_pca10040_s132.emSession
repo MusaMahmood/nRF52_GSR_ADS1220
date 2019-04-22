@@ -59,9 +59,9 @@
   <Watches active="0" update="Never"/>
  </Watch4>
  <Files>
-  <SessionOpenFile windowGroup="DockEditLeft" x="21" y="802" useTextEdit="1" useBinaryEdit="0" left="0" path="../../../main.c" selected="1" top="780" codecName="Default"/>
-  <SessionOpenFile windowGroup="HUD {f15ff0d7-6037-47c2-9766-5355e484d69a} Middle" x="38" y="98" useTextEdit="1" useBinaryEdit="0" left="0" path="ad5242.c" selected="0" top="57" codecName="Default"/>
-  <SessionOpenFile windowGroup="HUD {f15ff0d7-6037-47c2-9766-5355e484d69a} Right" x="8" y="24" useTextEdit="1" useBinaryEdit="0" left="0" path="ad5242.h" selected="0" top="6" codecName="Default"/>
+  <SessionOpenFile windowGroup="DockEditLeft" x="0" y="802" useTextEdit="1" useBinaryEdit="0" left="0" path="../../../main.c" selected="1" top="780" codecName="Default"/>
+  <SessionOpenFile windowGroup="DockEditLeft" x="0" y="98" useTextEdit="1" useBinaryEdit="0" left="0" path="ad5242.c" selected="0" top="57" codecName="Default"/>
+  <SessionOpenFile windowGroup="DockEditLeft" x="0" y="24" useTextEdit="1" useBinaryEdit="0" left="0" path="ad5242.h" selected="0" top="6" codecName="Default"/>
  </Files>
- <ARMCrossStudioWindow activeProject="ble_app_gsrv3_pca10040_s132" fileDialogDefaultFilter="*.c" autoConnectTarget="J-Link" buildConfiguration="nrf52832_xxaa" debugSearchFileMap="" fileDialogInitialDirectory="" debugSearchPath="" autoConnectCapabilities="3711"/>
+ <ARMCrossStudioWindow activeProject="ble_app_gsrv3_pca10040_s132" fileDialogDefaultFilter="*.c" autoConnectTarget="J-Link" buildConfiguration="nrf52832_xxaa" debugSearchFileMap="" fileDialogInitialDirectory="" debugSearchPath="" autoConnectCapabilities="3199"/>
 </session>

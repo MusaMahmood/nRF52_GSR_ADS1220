@@ -19,28 +19,26 @@
  * THE SOFTWARE.
  */
 
-#ifndef AD5242_H__
-#define AD5242_H__
+#ifndef TMP116_H__
+#define TMP116_H__
 
+#include "nrf.h"
 #include "nrf_drv_twi.h"
 
-#define AD5242_ADDRESS_READ (0x58 >> 1) //0b0101|1001
-#define AD5242_ADDRESS_WRITE (0x58 >> 1) //0b0101|1000
+#define TMP116_ADDRESS (0x90 >> 1)
 
-#define AD5242_INSTRUCTION_RDAC1 0x00 //0b0|0|0|00|000
+#define TMP116_REG_TEMP 0x00
+#define TMP116_REG_CONF 0x01
 
-#define AD5242_SCL_PIN 18
-#define AD5242_SDA_PIN 17
+#define TMP116_SCL_PIN 19
+#define TMP116_SDA_PIN 20
 
-void ad5242_twi_init(nrf_drv_twi_t m_twi);
+void tmp116_twi_init(nrf_drv_twi_t m_twi);
 
-void ad5242_twi_uninit(nrf_drv_twi_t m_twi);
+void tmp116_twi_uninit(nrf_drv_twi_t m_twi);
 
-void ad5242_read_rdac1_value(nrf_drv_twi_t m_twi);
+void tmp116_set_mode(nrf_drv_twi_t m_twi);
 
-void ad5242_write_rdac1_value(nrf_drv_twi_t m_twi, uint8_t value);
+uint16_t tmp116_read_data(nrf_drv_twi_t m_twi);
 
-void ad5242_write_rdac1_value_temp(nrf_drv_twi_t m_twi);
-
-
-#endif // AD5242_H__
+#endif
