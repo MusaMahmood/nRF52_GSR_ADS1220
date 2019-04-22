@@ -49,8 +49,6 @@
       <file file_name="ad5242.c" />
       <file file_name="ad5242.h" />
       <file file_name="ads1220.h" />
-      <file file_name="tmp116.c" />
-      <file file_name="tmp116.h" />
     </folder>
     <folder Name="Board Definition">
       <file file_name="../../../../../../components/boards/boards.c" />

@@ -86,7 +86,6 @@
 #include "nrf_drv_gpiote.h"
 #include "uicr_config.h"
 #include "ad5242.h"
-#include "tmp116.h"
 
 static nrf_drv_twi_t m_twi = NRF_DRV_TWI_INSTANCE(1);
 
@@ -110,9 +109,10 @@ static ble_bas_t m_bas; /**< Structure used to identify the battery service. */
 #endif
 
 #if defined(APP_TIMER_SAMPLING) && APP_TIMER_SAMPLING == 1
-#define TICKS_SAMPLING_INTERVAL APP_TIMER_TICKS(50)
+#define TICKS_SAMPLING_INTERVAL APP_TIMER_TICKS(1000)
 APP_TIMER_DEF(m_sampling_timer_id);
 static uint16_t m_samples;
+static uint16_t ch_mode = 1;
 #endif
 #if defined(FATFS_ENABLED) && FATFS_ENABLED == 1
 /* uSD Card/FATFS Stuff: */
@@ -202,15 +202,23 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t *p_file_name) {
 #if defined(APP_TIMER_SAMPLING) && APP_TIMER_SAMPLING == 1
 static void m_sampling_timeout_handler(void *p_context) {
   UNUSED_PARAMETER(p_context);
-  // TODO: Collect in array, and write in groups
-  uint16_t sample = tmp116_read_data(m_twi);
-  memcpy_fast(&m_sg.sg_ch2_buffer[m_sg.sg_ch2_count], (uint8_t*) &sample, sizeof(sample));
-  m_sg.sg_ch2_count+=2;
-//  NRF_LOG_INFO("[#%d]=[%d] \r\n", m_samples, sample);
-  if (m_sg.sg_ch2_count == SG_PACKET_LENGTH) {
-    m_sg.sg_ch2_count = 0;
-    ble_sg_update_2ch(&m_sg); 
+  // TODO: SWAP SETTINGS in ADS1220:
+  if (m_samples % 2 == 0) {
+    ch_mode = 1;
+    ads1220_init_temp_regs(); // Write default registers
+    ads1220_start_sync();         // start converting in continuous mode
+  } else {
+    ch_mode = 2;
+    ads1220_init_default_regs();  // Write default registers
+    ads1220_start_sync();         // start converting in continuous mode
   }
+  m_samples++;
+  // TODO: Collect in array, and write in groups
+//  uint16_t sample = tmp116_read_data(m_twi);
+//  memcpy_fast(&m_sg.sg_ch2_buffer[m_sg.sg_ch2_count], (uint8_t*) &sample, sizeof(sample));
+//  m_sg.sg_ch2_count+=2;
+//  NRF_LOG_INFO("[#%d]=[%d] \r\n", m_samples, sample);
+
   // TODO: On finish, write to FATFS
 }
 #endif
@@ -854,15 +862,18 @@ void drdy_pin_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
   UNUSED_PARAMETER(pin);
   UNUSED_PARAMETER(action);
   
-//  NRF_LOG_INFO("DRDY PIN DETECT! \r\n");
-
-  get_gsr_data(&m_sg);
+  get_data_gsr_temp(&m_sg, ch_mode);
 
   if (m_sg.sg_ch1_count == SG_PACKET_LENGTH) {
     m_sg.sg_ch1_count = 0;
-    ble_sg_update_1ch(&m_sg);
     // TODO: Write to FATFS:
+    ble_sg_update_1ch(&m_sg);
+  }
 
+  if (m_sg.sg_ch2_count == SG_PACKET_LENGTH) {
+    m_sg.sg_ch2_count = 0;
+    // TODO: Write to FATFS:
+    ble_sg_update_2ch(&m_sg); 
   }
 
 }
@@ -885,12 +896,6 @@ static void ads1220_gpio_init(void) {
   NRF_LOG_FLUSH();
   APP_ERROR_CHECK(err_code);
   nrf_drv_gpiote_in_event_enable(ADS1220_DRDY_PIN, true);
-  //  nrf_gpio_cfg_output(BATTERY_LOAD_SWITCH_CTRL_PIN);
-  //  nrf_gpio_pin_set(BATTERY_LOAD_SWITCH_CTRL_PIN); //OFF
-  //#ifdef BATTERY_LOAD_SWITCH_CTRL_PIN
-  //  nrf_gpio_cfg_output(BATTERY_LOAD_SWITCH_CTRL_PIN);
-  //  nrf_gpio_pin_set(BATTERY_LOAD_SWITCH_CTRL_PIN); //OFF
-  //#endif
 }
 
 /**@brief Function for application main entry.
@@ -909,6 +914,7 @@ int main(void) {
   services_init();
   conn_params_init();
   m_sg.sg_ch1_count = 0;
+  m_sg.sg_ch2_count = 0;
   // ADS1220 Functions:
   //Reset?
   ads_spi_init();
@@ -923,18 +929,14 @@ int main(void) {
   // AD5242 Init:
   ad5242_twi_init(m_twi); 
   ad5242_write_rdac1_value(m_twi, 0xF0);
-  // Hold SCL/SDA lines until further notice.
-  // Uninit
-  ad5242_twi_uninit(m_twi);
+//  ad5242_twi_uninit(m_twi);
   // Initialize TMP Sensor:
-  tmp116_twi_init(m_twi);
-  tmp116_set_mode(m_twi);
   // Setup FATFS on SPI2:
 #if defined(FATFS_ENABLED) && FATFS_ENABLED == 1
   fatfs_init();
 #endif
   // Start execution.
-  application_timers_start();
+  application_timers_start(); // ONCE CALIBRATION IS COMPLETE!
   advertising_start();
   NRF_LOG_RAW_INFO(" BLE Advertising Start! \r\n");
   NRF_LOG_FLUSH();
