@@ -114,6 +114,30 @@ static ble_bas_t m_bas; /**< Structure used to identify the battery service. */
 APP_TIMER_DEF(m_sampling_timer_id);
 static uint16_t m_samples;
 #endif
+#if defined(FATFS_ENABLED) && FATFS_ENABLED == 1
+/* uSD Card/FATFS Stuff: */
+#include "diskio_blkdev.h"
+#include "ff.h"
+#include "nrf_block_dev_sdc.h"
+#define SDC_SCK_PIN 22  ///< SDC serial clock (SCK) pin.
+#define SDC_MOSI_PIN 23 ///< SDC serial data in (DI) pin.
+#define SDC_MISO_PIN 21 ///< SDC serial data out (DO) pin.
+#define SDC_CS_PIN 24   ///< SDC chip select (CS) pin.
+#define FILE_NAME "Data.dat"
+
+static uint8_t count_number_samples = 0;
+static int16_t data_to_write[2] = {0, 0};
+/**
+ * @brief  SDC block device definition
+ * */
+NRF_BLOCK_DEV_SDC_DEFINE(
+    m_block_dev_sdc,
+    NRF_BLOCK_DEV_SDC_CONFIG(
+        SDC_SECTOR_SIZE,
+        APP_SDCARD_CONFIG(SDC_MOSI_PIN, SDC_MISO_PIN, SDC_SCK_PIN, SDC_CS_PIN)),
+    NFR_BLOCK_DEV_INFO_CONFIG("Nordic", "SDC", "1.00"));
+/* END FATFS */
+#endif
 
 #define APP_FEATURE_NOT_SUPPORTED BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2 /**< Reply when unsupported features are requested. */
 
@@ -178,18 +202,23 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t *p_file_name) {
 #if defined(APP_TIMER_SAMPLING) && APP_TIMER_SAMPLING == 1
 static void m_sampling_timeout_handler(void *p_context) {
   UNUSED_PARAMETER(p_context);
-  // TODO: 
+  // TODO: Collect in array, and write in groups
   uint16_t sample = tmp116_read_data(m_twi);
-  m_samples++;
-  NRF_LOG_INFO("[#%d]=[%d] \r\n", m_samples, sample);
+  memcpy_fast(&m_sg.sg_ch2_buffer[m_sg.sg_ch2_count], (uint8_t*) &sample, sizeof(sample));
+  m_sg.sg_ch2_count+=2;
+//  NRF_LOG_INFO("[#%d]=[%d] \r\n", m_samples, sample);
+  if (m_sg.sg_ch2_count == SG_PACKET_LENGTH) {
+    m_sg.sg_ch2_count = 0;
+    ble_sg_update_2ch(&m_sg); 
+  }
+  // TODO: On finish, write to FATFS
 }
 #endif
 
 //#if defined(BLE_BAS_ENABLED) && BLE_BAS_ENABLED == 1
 
 static void battery_level_update(void) {
-//  ret_code_t err_code;
-//TODO: CALL SAADC
+// CALL SAADC
 #if defined(SAADC_ENABLED) && SAADC_ENABLED == 1
   //Enable load switch:
   nrf_gpio_pin_clear(BATTERY_LOAD_SWITCH_CTRL_PIN);
@@ -197,6 +226,32 @@ static void battery_level_update(void) {
   nrf_drv_saadc_sample();
 #endif
 }
+
+#if defined(FATFS_ENABLED) && FATFS_ENABLED == 1
+static void fatfs_write_data(void) {
+  FRESULT ff_result; 
+  static FIL file; 
+  uint32_t bytes_written; 
+
+  NRF_LOG_INFO("Writing to file " FILE_NAME "...\r\n");
+  ff_result = f_open(&file, FILE_NAME, FA_READ | FA_WRITE | FA_OPEN_APPEND);
+  if (ff_result != FR_OK) {
+    NRF_LOG_INFO("Unable to open or create file: " FILE_NAME ".\r\n");
+    return;
+  }
+  // Break into individual bytes:
+  uint8_t data_array_bytes[4];
+  memcpy(&data_array_bytes[0], &data_to_write[0], 4);
+  ff_result = f_write(&file, data_array_bytes, 4, (UINT *)&bytes_written);
+  if (ff_result != FR_OK) {
+    NRF_LOG_INFO("Write failed\r\n.");
+  } else {
+    NRF_LOG_INFO("%d bytes written.\r\n", bytes_written);
+  }
+
+  (void)f_close(&file);
+}  
+#endif
 
 static void battery_level_meas_timeout_handler(void *p_context) {
   UNUSED_PARAMETER(p_context);
@@ -665,6 +720,70 @@ static void advertising_start(void) {
   APP_ERROR_CHECK(err_code);
 }
 
+#if defined(FATFS_ENABLED) && FATFS_ENABLED == 1
+static void fatfs_init(void) {
+  static FATFS fs;
+  static DIR dir;
+  static FILINFO fno;
+  //
+
+  //  uint32_t bytes_written;
+  FRESULT ff_result;
+  DSTATUS disk_state = STA_NOINIT;
+
+  // Initialize FATFS disk I/O interface by providing the block device.
+  static diskio_blkdev_t drives[] =
+      {
+          DISKIO_BLOCKDEV_CONFIG(NRF_BLOCKDEV_BASE_ADDR(m_block_dev_sdc, block_dev), NULL)};
+
+  diskio_blockdev_register(drives, ARRAY_SIZE(drives));
+
+  NRF_LOG_INFO("Initializing disk 0 (SDC)...\r\n");
+  for (uint32_t retries = 3; retries && disk_state; --retries) {
+    disk_state = disk_initialize(0);
+  }
+  if (disk_state) {
+    NRF_LOG_INFO("Disk initialization failed.\r\n");
+    return;
+  }
+
+  uint32_t blocks_per_mb = (1024uL * 1024uL) / m_block_dev_sdc.block_dev.p_ops->geometry(&m_block_dev_sdc.block_dev)->blk_size;
+  uint32_t capacity = m_block_dev_sdc.block_dev.p_ops->geometry(&m_block_dev_sdc.block_dev)->blk_count / blocks_per_mb;
+  NRF_LOG_INFO("Capacity: %d MB\r\n", capacity);
+
+  NRF_LOG_INFO("Mounting volume...\r\n");
+  ff_result = f_mount(&fs, "", 1);
+  if (ff_result) {
+    NRF_LOG_INFO("Mount failed.\r\n");
+    return;
+  }
+
+  NRF_LOG_INFO("\r\n Listing directory: /\r\n");
+  ff_result = f_opendir(&dir, "/");
+  if (ff_result) {
+    NRF_LOG_INFO("Directory listing failed!\r\n");
+    return;
+  }
+
+  do {
+    ff_result = f_readdir(&dir, &fno);
+    if (ff_result != FR_OK) {
+      NRF_LOG_INFO("Directory read failed.");
+      return;
+    }
+
+    if (fno.fname[0]) {
+      if (fno.fattrib & AM_DIR) {
+        NRF_LOG_RAW_INFO("   <DIR>   %s\r\n", (uint32_t)fno.fname);
+      } else {
+        NRF_LOG_RAW_INFO("%9lu  %s\r\n", fno.fsize, (uint32_t)fno.fname);
+      }
+    }
+  } while (fno.fname[0]);
+  NRF_LOG_RAW_INFO("\r\n");
+}
+#endif
+
 #if defined(SAADC_ENABLED) && SAADC_ENABLED == 1
 
 void saadc_callback(nrf_drv_saadc_evt_t const *p_event) {
@@ -696,10 +815,9 @@ void saadc_callback(nrf_drv_saadc_evt_t const *p_event) {
 }
 
 void saadc_init(void) {
-
   ret_code_t err_code;
   nrf_drv_saadc_config_t saadc_config;
-  //TODO: Adjust Configuration: SAADC
+  // SAADC Configuration: 
   saadc_config.low_power_mode = true;                     //Enable low power mode.
   saadc_config.resolution = NRF_SAADC_RESOLUTION_12BIT;   //Set SAADC resolution to 12-bit. This will make the SAADC output values from 0 (when input voltage is 0V) to 2^12=2048 (when input voltage is 3.6V for channel gain setting of 1/6).
   saadc_config.oversample = NRF_SAADC_OVERSAMPLE_4X;      //Set oversample to 4x. This will make the SAADC output a single averaged value when the SAMPLE task is triggered 4 times.
@@ -743,6 +861,8 @@ void drdy_pin_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
   if (m_sg.sg_ch1_count == SG_PACKET_LENGTH) {
     m_sg.sg_ch1_count = 0;
     ble_sg_update_1ch(&m_sg);
+    // TODO: Write to FATFS:
+
   }
 
 }
@@ -797,19 +917,22 @@ int main(void) {
   ads1220_check_written_regs(); //Sanity Check. Dump written registers
   ads1220_start_sync();         // start converting in continuous mode
 // Wait for DRDY.
-
-  
-
 #if defined(SAADC_ENABLED) && SAADC_ENABLED == 1
   saadc_init();
 #endif
   // AD5242 Init:
   ad5242_twi_init(m_twi); 
-  ad5242_write_rdac1_value(m_twi, 0xFF);
+  ad5242_write_rdac1_value(m_twi, 0xF0);
+  // Hold SCL/SDA lines until further notice.
+  // Uninit
   ad5242_twi_uninit(m_twi);
   // Initialize TMP Sensor:
   tmp116_twi_init(m_twi);
   tmp116_set_mode(m_twi);
+  // Setup FATFS on SPI2:
+#if defined(FATFS_ENABLED) && FATFS_ENABLED == 1
+  fatfs_init();
+#endif
   // Start execution.
   application_timers_start();
   advertising_start();
