@@ -764,6 +764,8 @@ static void ads1220_gpio_init(void) {
   NRF_LOG_FLUSH();
   APP_ERROR_CHECK(err_code);
   nrf_drv_gpiote_in_event_enable(ADS1220_DRDY_PIN, true);
+  //  nrf_gpio_cfg_output(BATTERY_LOAD_SWITCH_CTRL_PIN);
+  //  nrf_gpio_pin_set(BATTERY_LOAD_SWITCH_CTRL_PIN); //OFF
   //#ifdef BATTERY_LOAD_SWITCH_CTRL_PIN
   //  nrf_gpio_cfg_output(BATTERY_LOAD_SWITCH_CTRL_PIN);
   //  nrf_gpio_pin_set(BATTERY_LOAD_SWITCH_CTRL_PIN); //OFF
@@ -793,15 +795,16 @@ int main(void) {
   ads1220_init_default_regs();  // Write default registers
   ads1220_check_written_regs(); //Sanity Check. Dump written registers
   ads1220_start_sync();         // start converting in continuous mode
-  // Wait for DRDY.
-  // AD5242 Init:
-  ad5242_twi_init();
-  ad5242_read_rdac1_value();
-  ad5242_write_rdac1_value(0xFE);
-  ad5242_read_rdac1_value();
+// Wait for DRDY.
 #if defined(SAADC_ENABLED) && SAADC_ENABLED == 1
   saadc_init();
 #endif
+  // AD5242 Init:
+  ad5242_twi_init(); 
+  ad5242_write_rdac1_value(0xFF);
+
+  ad5242_twi_uninit();
+  // Initialize TMP Sensor:
 
   // Start execution.
   application_timers_start();

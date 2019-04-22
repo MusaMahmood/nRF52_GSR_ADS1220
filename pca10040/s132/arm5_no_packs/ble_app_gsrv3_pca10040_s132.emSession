@@ -2,8 +2,7 @@
 <session>
  <Bookmarks/>
  <Breakpoints groups="Breakpoints" active_group="Breakpoints">
-  <BreakpointListItem trigger="" line="798" counter="0" hardwareBreakpoint="" isFunctionBreakpoint="false" action="" expression="" group="Breakpoints" type="Breakpoint" state="2" filename="../../../main.c" useHWbreakpoint="false"/>
-  <Exceptions set="MemManage;UsageFault_Coprocessor;UsageFault_CheckingError;UsageFault_StateError;BusFault;ExceptionEntryReturnFault;HardFault"/>
+  <BreakpointListItem trigger="" line="789" counter="0" hardwareBreakpoint="" isFunctionBreakpoint="false" action="" expression="" group="Breakpoints" type="Breakpoint" state="2" filename="../../../main.c" useHWbreakpoint="false"/>
  </Breakpoints>
  <ExecutionProfileWindow/>
  <FrameBufferWindow>
@@ -25,6 +24,7 @@
   <ProjectSessionItem path="ble_app_gsrv3_pca10040_s132"/>
   <ProjectSessionItem path="ble_app_gsrv3_pca10040_s132;ble_app_gsrv3_pca10040_s132"/>
   <ProjectSessionItem path="ble_app_gsrv3_pca10040_s132;ble_app_gsrv3_pca10040_s132;Application"/>
+  <ProjectSessionItem path="ble_app_gsrv3_pca10040_s132;ble_app_gsrv3_pca10040_s132;Internal Files"/>
   <ProjectSessionItem path="ble_app_gsrv3_pca10040_s132;ble_app_gsrv3_pca10040_s132;nRF_Drivers"/>
   <ProjectSessionItem path="ble_app_gsrv3_pca10040_s132;ble_app_gsrv3_pca10040_s132;nRF_Libraries"/>
  </Project>
@@ -59,13 +59,9 @@
   <Watches active="0" update="Never"/>
  </Watch4>
  <Files>
-  <SessionOpenFile windowGroup="DockEditLeft" x="0" y="802" useTextEdit="1" useBinaryEdit="0" left="0" path="../../../main.c" selected="0" top="758" codecName="Default"/>
-  <SessionOpenFile windowGroup="DockEditLeft" x="19" y="25" useTextEdit="1" useBinaryEdit="0" left="0" path="ad5242.c" selected="1" top="20" codecName="Default"/>
-  <SessionOpenFile windowGroup="DockEditLeft" x="0" y="33" useTextEdit="1" useBinaryEdit="0" left="0" path="ad5242.h" selected="0" top="0" codecName="Default"/>
-  <SessionOpenFile windowGroup="DockEditLeft" x="0" y="53" useTextEdit="1" useBinaryEdit="0" left="0" path="../../../../../../components/libraries/util/app_error_weak.c" selected="0" top="0" codecName=""/>
-  <SessionOpenFile windowGroup="DockEditLeft" x="0" y="985" useTextEdit="1" useBinaryEdit="0" left="0" path="../../../../../../components/drivers_nrf/twi_master/nrf_drv_twi.c" selected="0" top="957" codecName="Default"/>
-  <SessionOpenFile windowGroup="DockEditLeft" x="0" y="131" useTextEdit="1" useBinaryEdit="0" left="0" path="../../../../../../components/drivers_nrf/hal/nrf_twi.h" selected="0" top="101" codecName="Default"/>
-  <SessionOpenFile windowGroup="DockEditLeft" x="0" y="127" useTextEdit="1" useBinaryEdit="0" left="0" path="../../../../../../components/drivers_nrf/twi_master/nrf_drv_twi.h" selected="0" top="99" codecName="Default"/>
+  <SessionOpenFile windowGroup="DockEditLeft" x="21" y="802" useTextEdit="1" useBinaryEdit="0" left="0" path="../../../main.c" selected="1" top="780" codecName="Default"/>
+  <SessionOpenFile windowGroup="HUD {f15ff0d7-6037-47c2-9766-5355e484d69a} Middle" x="38" y="98" useTextEdit="1" useBinaryEdit="0" left="0" path="ad5242.c" selected="0" top="57" codecName="Default"/>
+  <SessionOpenFile windowGroup="HUD {f15ff0d7-6037-47c2-9766-5355e484d69a} Right" x="8" y="24" useTextEdit="1" useBinaryEdit="0" left="0" path="ad5242.h" selected="0" top="6" codecName="Default"/>
  </Files>
  <ARMCrossStudioWindow activeProject="ble_app_gsrv3_pca10040_s132" fileDialogDefaultFilter="*.c" autoConnectTarget="J-Link" buildConfiguration="nrf52832_xxaa" debugSearchFileMap="" fileDialogInitialDirectory="" debugSearchPath="" autoConnectCapabilities="3711"/>
 </session>

@@ -22,8 +22,8 @@
 #ifndef AD5242_H__
 #define AD5242_H__
 
-#define AD5242_ADDRESS_READ 0x59 //0b01011001
-#define AD5242_ADDRESS_WRITE 0x58 //0b01011000
+#define AD5242_ADDRESS_READ (0x58 >> 1) //0b0101|1001
+#define AD5242_ADDRESS_WRITE (0x58 >> 1) //0b0101|1000
 
 #define AD5242_INSTRUCTION_RDAC1 0x00 //0b0|0|0|00|000
 
@@ -32,8 +32,13 @@
 
 void ad5242_twi_init(void);
 
+void ad5242_twi_uninit(void);
+
 void ad5242_read_rdac1_value();
 
 void ad5242_write_rdac1_value(uint8_t value);
+
+void ad5242_write_rdac1_value_temp();
+
 
 #endif // AD5242_H__
