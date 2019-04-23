@@ -36,6 +36,13 @@ uint8_t ads1220_default_regs[] = {
     ADS1220_REGDEFAULT_CFG3,
 };
 
+uint8_t ads1220_tempsense_regs[] = {
+  ADS1220_REGDEFAULT_CFG0, 
+  0x06, // 0b000|00|1|1|0
+  ADS1220_REGDEFAULT_CFG2, 
+  ADS1220_REGDEFAULT_CFG3,
+};
+
 static const nrf_drv_spi_t spi = NRF_DRV_SPI_INSTANCE(0);
 static volatile bool spi_xfer_done;
 
@@ -80,6 +87,31 @@ void ads1220_init_default_regs(void) {
   tx_data_spi[0] = ADS1220_WREG_OPCODE;
 
   memcpy(&tx_data_spi[1], &ads1220_default_regs[0], num_registers);
+
+  spi_xfer_done = false;
+  APP_ERROR_CHECK(nrf_drv_spi_transfer(&spi, tx_data_spi, num_registers + 1, rx_data_spi, num_registers + 1));
+  nrf_delay_ms(10);
+  while (!spi_xfer_done) {
+    __WFE();
+  }
+  NRF_LOG_INFO(" Power-on reset and initialization procedure..\r\n");
+}
+
+void ads1220_init_temp_regs(void) {
+  uint8_t i = 0;
+  uint8_t num_registers = 4;
+  uint8_t txrx_size = num_registers + 1;
+  uint8_t tx_data_spi[txrx_size]; //Size = 6 bytes
+  uint8_t rx_data_spi[txrx_size]; //Size = 6 bytes
+
+  for (i = 0; i < txrx_size; i++) {
+    tx_data_spi[i] = 0; // Set array to zero.
+    rx_data_spi[i] = 0; // Set array to zero.
+  }
+
+  tx_data_spi[0] = ADS1220_WREG_OPCODE;
+
+  memcpy(&tx_data_spi[1], &ads1220_tempsense_regs[0], num_registers);
 
   spi_xfer_done = false;
   APP_ERROR_CHECK(nrf_drv_spi_transfer(&spi, tx_data_spi, num_registers + 1, rx_data_spi, num_registers + 1));
@@ -162,20 +194,30 @@ void get_gsr_data(ble_sg_t *p_sg) {
     __WFE();
   }
   memcpy_fast(&p_sg->sg_ch1_buffer[p_sg->sg_ch1_count], &rx_data[0], 3);
-  NRF_LOG_INFO("p_sg_data = 0x%X%X%X \r\n", rx_data[0], rx_data[1], rx_data[2]);
   p_sg->sg_ch1_count += 3;
 }
 
-//void ads1220_readdata(void) {
-//  uint8_t tx_data_spi;
-//  uint8_t rx_data_spi;
-//
-//  tx_data_spi = ADS1220_RDATA_OPCODE;
-//
-//  spi_xfer_done = false;
-//  APP_ERROR_CHECK(nrf_drv_spi_transfer(&spi, &tx_data_spi, 1, &rx_data_spi, 1));
-//  while (!spi_xfer_done) {
-//    __WFE();
-//  }
-//  NRF_LOG_INFO(" Powerdown ADS1220..\r\n");
-//}
+
+void get_data_gsr_temp(ble_sg_t *p_sg, uint16_t ch_mode) {
+  uint8_t rx_data[3];
+  spi_xfer_done = false;
+  APP_ERROR_CHECK(nrf_drv_spi_transfer(&spi, NULL, NULL, rx_data, 3));
+  while (!spi_xfer_done) {
+    __WFE();
+  }
+  if (ch_mode == 1) {
+    if (p_sg->sg_ch2_count == -1) {
+      p_sg->sg_ch2_count ++;
+    } else {
+      memcpy_fast(&p_sg->sg_ch2_buffer[p_sg->sg_ch2_count], &rx_data[0], 3);
+      p_sg->sg_ch2_count += 3;
+    }
+  } else {
+    if (p_sg->sg_ch1_count == -1) {
+      p_sg->sg_ch1_count++; 
+    } else {
+      memcpy_fast(&p_sg->sg_ch1_buffer[p_sg->sg_ch1_count], &rx_data[0], 3);
+      p_sg->sg_ch1_count += 3;
+    }
+  }
+}

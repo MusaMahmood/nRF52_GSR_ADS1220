@@ -57,6 +57,8 @@ void ads_spi_init(void);
 
 void ads1220_init_default_regs(void);
 
+void ads1220_init_temp_regs(void);
+
 void ads1220_check_written_regs(void);
 
 void ads1220_reset(void);
@@ -69,5 +71,6 @@ void ads1220_powerdown(void);
 
 void get_gsr_data(ble_sg_t *p_sg);
 
+void get_data_gsr_temp(ble_sg_t *p_sg, uint16_t ch_mode);
 
 #endif // ADS1220_H__

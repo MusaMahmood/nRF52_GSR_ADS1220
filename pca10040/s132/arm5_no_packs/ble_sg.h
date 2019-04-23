@@ -48,6 +48,7 @@
 
 // Characteristic UUIDs
 #define BLE_UUID_SG_CH1_CHAR 0xA731
+#define BLE_UUID_SG_CH2_CHAR 0xA732
 
 #define SG_PACKET_LENGTH 60
 
@@ -59,8 +60,11 @@ typedef struct
   uint16_t conn_handle;    /**< Event handler to be called for handling events in the Biopotential Measurement Service. */
   uint16_t service_handle; /**< Handle of ble Service (as provided by the BLE stack). */
   ble_gatts_char_handles_t sg_ch1_handles; /**< Handles related to the our body V measure characteristic. */
+  ble_gatts_char_handles_t sg_ch2_handles; /**< Handles related to the our body V measure characteristic. */
   uint8_t sg_ch1_buffer[SG_PACKET_LENGTH]; //246 or 4* = 
-  uint16_t sg_ch1_count;
+  uint8_t sg_ch2_buffer[SG_PACKET_LENGTH]; //246 or 4* = 
+  int16_t sg_ch1_count;
+  int16_t sg_ch2_count;
 } ble_sg_t;
 
 void ble_sg_service_init(ble_sg_t *p_sg);
@@ -74,10 +78,14 @@ void ble_sg_service_init(ble_sg_t *p_sg);
  */
 void ble_sg_on_ble_evt(ble_sg_t *p_sg, ble_evt_t *p_ble_evt);
 
-/**@brief function for updating/notifying BLE of new value.
+/**@brief function for updating/notifying BLE of new value for main ADC (strain gauge or GSR data)
 *
 */
-
 void ble_sg_update_1ch(ble_sg_t *p_sg);
+
+/**@brief function for updating/notifying BLE of new value for temp sensor
+*
+*/
+void ble_sg_update_2ch(ble_sg_t *p_sg);
 
 #endif // BLE_SG_H__
