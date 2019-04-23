@@ -92,6 +92,7 @@ static nrf_drv_twi_t m_twi = NRF_DRV_TWI_INSTANCE(1);
 #define DEVICE_MODEL_NUMBERSTR "Version 3.1"
 #define DEVICE_FIRMWARE_STRING "Version 14.1.0"
 static bool m_connected = false;
+
 ble_sg_t m_sg;
 static uint16_t ch_mode = 1;
 
@@ -125,7 +126,10 @@ static uint16_t m_samples;
 #define SDC_MISO_PIN 21 ///< SDC serial data out (DO) pin.
 #define SDC_CS_PIN 24   ///< SDC chip select (CS) pin.
 #define FILE_NAME_GSR "DataGSR.dat"
-#define FILE_NAME_TEMP "DataTMP.dat"
+static FIL file_gsr; 
+static bool m_fatfs_init = false;
+static uint32_t total_bytes_written = 0; 
+
 /**
  * @brief  SDC block device definition
  * */
@@ -201,7 +205,6 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t *p_file_name) {
 #if defined(APP_TIMER_SAMPLING) && APP_TIMER_SAMPLING == 1
 static void m_sampling_timeout_handler(void *p_context) {
   UNUSED_PARAMETER(p_context);
-  // TODO: SWAP SETTINGS in ADS1220:
 }
 #endif
 
@@ -218,49 +221,42 @@ static void battery_level_update(void) {
 }
 
 #if defined(FATFS_ENABLED) && FATFS_ENABLED == 1
-static void fatfs_write_data_gsr(void) {
-  FRESULT ff_result;
-  static FIL file;
-  uint32_t bytes_written;
-
-  NRF_LOG_INFO("Writing to file " FILE_NAME_GSR "...\r\n");
-  ff_result = f_open(&file, FILE_NAME_GSR, FA_READ | FA_WRITE | FA_OPEN_APPEND);
+void fatfs_file_init(void) {
+  FRESULT ff_result; 
+  NRF_LOG_INFO("Opening File " FILE_NAME_GSR "... \r\n"); 
+  ff_result = f_open(&file_gsr, FILE_NAME_GSR, FA_READ | FA_WRITE | FA_OPEN_APPEND);
   if (ff_result != FR_OK) {
     NRF_LOG_INFO("Unable to open or create file: " FILE_NAME_GSR ".\r\n");
     NRF_LOG_INFO("ERRCODE: %d\r\n", ff_result);
     return;
   }
+  m_fatfs_init = true;
+}
 
-  ff_result = f_write(&file, &m_sg.sg_ch1_buffer[0], SG_PACKET_LENGTH, (UINT *)&bytes_written);
+void fatfs_file_uninit(void) {
+  NRF_LOG_INFO("Closing File " FILE_NAME_GSR "... \r\n"); 
+  m_fatfs_init = false;
+  (void) f_close(&file_gsr);
+}
+
+void fatfs_write_data_gsr(uint8_t data_type) {
+  FRESULT ff_result; 
+  //--
+  uint32_t bytes_written; 
+  if (data_type == 2)
+    ff_result = f_write(&file_gsr, &m_sg.sg_ch1_buffer[0], SG_PACKET_LENGTH, (UINT *)&bytes_written);
+  else
+    ff_result = f_write(&file_gsr, &m_sg.sg_ch2_buffer[0], SG_PACKET_LENGTH, (UINT *)&bytes_written);
+  total_bytes_written += bytes_written;
   if (ff_result != FR_OK) {
     NRF_LOG_INFO("Write failed\r\n.");
   } else {
-    NRF_LOG_INFO("%d bytes written.\r\n", bytes_written);
+    NRF_LOG_INFO("%d bytes written || TOTAL: %d\r\n", bytes_written, total_bytes_written);
   }
-
-  (void)f_close(&file);
+  //--
+  (void) f_sync(&file_gsr);
 }
 
-void fatfs_write_data_temp(void) {
-  FRESULT ff_result;
-  FIL file;
-  uint32_t bytes_written;
-
-  NRF_LOG_INFO("Writing to file " FILE_NAME_TEMP "...\r\n");
-  ff_result = f_open(&file, FILE_NAME_TEMP, FA_READ | FA_WRITE | FA_OPEN_APPEND);
-  if (ff_result != FR_OK) {
-    NRF_LOG_INFO("Unable to open or create file: " FILE_NAME_TEMP ".\r\n");
-    return;
-  }
-  ff_result = f_write(&file, &m_sg.sg_ch2_buffer[0], SG_PACKET_LENGTH, (UINT *)&bytes_written);
-  if (ff_result != FR_OK) {
-    NRF_LOG_INFO("Write failed\r\n.");
-  } else {
-    NRF_LOG_INFO("%d bytes written.\r\n", bytes_written);
-  }
-
-  (void)f_close(&file);
-}
 #endif
 
 static void battery_level_meas_timeout_handler(void *p_context) {
@@ -492,7 +488,6 @@ static void on_ble_evt(ble_evt_t *p_ble_evt) {
     advertising_start();
     break; // BLE_GAP_EVT_DISCONNECTED
   case BLE_GAP_EVT_CONNECTED:
-    battery_level_update();
 #if LEDS_ENABLE == 1
     nrf_gpio_pin_set(LED_2);
     nrf_gpio_pin_clear(LED_1);
@@ -754,6 +749,7 @@ static void fatfs_init(void) {
   }
   if (disk_state) {
     NRF_LOG_INFO("Disk initialization failed.\r\n");
+    NRF_LOG_INFO("Make sure disk is properly formatted (FAT32).\r\n");
     return;
   }
 
@@ -860,7 +856,7 @@ static void wait_for_event(void) {
   (void)sd_app_evt_wait();
 }
 
-static void drdy_pin_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
+void drdy_pin_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
   UNUSED_PARAMETER(pin);
   UNUSED_PARAMETER(action);
 
@@ -868,9 +864,13 @@ static void drdy_pin_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t act
 
   if (m_sg.sg_ch1_count == SG_PACKET_LENGTH) { // mode 2
     m_sg.sg_ch1_count = -1;
-    // TODO: Write to FATFS:
-    ble_sg_update_1ch(&m_sg);
-//    fatfs_write_data_gsr();
+    if (m_connected) {
+      ble_sg_update_1ch(&m_sg);
+    } else {
+      if (m_fatfs_init) {
+//        fatfs_write_data_gsr(2);
+      }
+    }
     // Switch to mode 1:
     ch_mode = 1;
     ads1220_init_temp_regs(); // Write default registers
@@ -879,9 +879,11 @@ static void drdy_pin_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t act
 
   if (m_sg.sg_ch2_count == SG_PACKET_LENGTH) { // mode 1 (temp)
     m_sg.sg_ch2_count = -1;
-    // TODO: Write to FATFS:
-    //    fatfs_write_data_temp();
-    ble_sg_update_2ch(&m_sg);
+    if (m_connected) {
+      ble_sg_update_2ch(&m_sg);
+    } else {
+//      fatfs_write_data_gsr(1);
+    }
     // Switch to mode 2:
     ch_mode = 2;
     ads1220_init_default_regs(); // Write default registers
@@ -926,7 +928,8 @@ int main(void) {
   conn_params_init();
   m_sg.sg_ch1_count = 0;
   m_sg.sg_ch2_count = 0;
-  
+  m_sg.sg_ch1_buffer[0] = 0xFF; // <Starting Marker for New Recording> 0xFFFF followed by 58 zero-bytes
+  m_sg.sg_ch1_buffer[1] = 0xFF;
   // ADS1220 Functions:
   ads_spi_init();
   ads1220_reset();              // Reset to ensure device is properly working
@@ -944,7 +947,8 @@ int main(void) {
 #if defined(FATFS_ENABLED) && FATFS_ENABLED == 1
 // Setup FATFS on SPI2:
   fatfs_init();
-  fatfs_write_data_gsr();
+  fatfs_file_init();
+  fatfs_write_data_gsr(2); // Write Starting Frame.
 #endif
   // Start execution.
   application_timers_start(); // ONCE CALIBRATION IS COMPLETE!
