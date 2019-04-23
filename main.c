@@ -967,8 +967,7 @@ int main(void) {
       if (m_fatfs_init) {
         fatfs_write_data_gsr(2);
       }
-      // Calibrate if out of range.
-      //TODO: Get current value
+      // Calibrate if out of range:
       int32_t value = (m_sg.sg_ch1_buffer[0] << 16) | (m_sg.sg_ch1_buffer[1] << 8) | (m_sg.sg_ch1_buffer[2]);
       NRF_LOG_INFO("Current Value: %d \r\n", value); 
       if (value < 409600) { // Out of range (V < 0.1)
