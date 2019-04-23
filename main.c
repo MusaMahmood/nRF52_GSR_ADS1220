@@ -938,8 +938,9 @@ int main(void) {
   saadc_init();
 #endif
   // AD5242 Init:
+  uint8_t ad5242_rdac_val = 52;
   ad5242_twi_init(m_twi);
-  ad5242_write_rdac1_value(m_twi, 0xF0);
+  ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
 //  ad5242_twi_uninit(m_twi);
 #if defined(FATFS_ENABLED) && FATFS_ENABLED == 1
 // Setup FATFS on SPI2:
@@ -965,6 +966,25 @@ int main(void) {
       m_ch1_complete_flag = false;
       if (m_fatfs_init) {
         fatfs_write_data_gsr(2);
+      }
+      // Calibrate if out of range.
+      //TODO: Get current value
+      int32_t value = (m_sg.sg_ch1_buffer[0] << 16) | (m_sg.sg_ch1_buffer[1] << 8) | (m_sg.sg_ch1_buffer[2]);
+      NRF_LOG_INFO("Current Value: %d \r\n", value); 
+      if (value < 409600) { // Out of range (V < 0.1)
+        NRF_LOG_INFO("[LOW THRESHOLD] - Value out of range! : %d\r\n", value);
+        if (ad5242_rdac_val != 255)
+          ad5242_rdac_val++;
+        ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
+        NRF_LOG_INFO("Updated RDAC Value to %d\r\n", ad5242_rdac_val);
+      } 
+
+      if (value > 6512639) { // Out of range (V > 1.59)
+        NRF_LOG_INFO("[HIGH THRESHOLD] - Value out of range! : %d\r\n", value);
+        if (ad5242_rdac_val != 0)
+          ad5242_rdac_val--;
+        ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
+        NRF_LOG_INFO("Updated RDAC Value to %d\r\n", ad5242_rdac_val);
       }
     }
     if (m_ch2_complete_flag) {
