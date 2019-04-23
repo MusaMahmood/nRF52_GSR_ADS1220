@@ -113,7 +113,7 @@ static ble_bas_t m_bas; /**< Structure used to identify the battery service. */
 #if defined(APP_TIMER_SAMPLING) && APP_TIMER_SAMPLING == 1
 #define TICKS_SAMPLING_INTERVAL APP_TIMER_TICKS(1000)
 APP_TIMER_DEF(m_sampling_timer_id);
-static uint16_t m_samples;
+static volatile bool m_sampling_timer_expired = false;
 #endif
 
 #if defined(FATFS_ENABLED) && FATFS_ENABLED == 1
@@ -129,6 +129,8 @@ static uint16_t m_samples;
 static FIL file_gsr; 
 static bool m_fatfs_init = false;
 static uint32_t total_bytes_written = 0; 
+static volatile bool m_ch1_complete_flag = false;
+static volatile bool m_ch2_complete_flag = false;
 
 /**
  * @brief  SDC block device definition
@@ -205,6 +207,7 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t *p_file_name) {
 #if defined(APP_TIMER_SAMPLING) && APP_TIMER_SAMPLING == 1
 static void m_sampling_timeout_handler(void *p_context) {
   UNUSED_PARAMETER(p_context);
+  m_sampling_timer_expired = true;
 }
 #endif
 
@@ -253,8 +256,6 @@ void fatfs_write_data_gsr(uint8_t data_type) {
   } else {
     NRF_LOG_INFO("%d bytes written || TOTAL: %d\r\n", bytes_written, total_bytes_written);
   }
-  //--
-  (void) f_sync(&file_gsr);
 }
 
 #endif
@@ -863,14 +864,11 @@ void drdy_pin_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
   get_data_gsr_temp(&m_sg, ch_mode);
 
   if (m_sg.sg_ch1_count == SG_PACKET_LENGTH) { // mode 2
+    m_ch1_complete_flag = true;
     m_sg.sg_ch1_count = -1;
     if (m_connected) {
       ble_sg_update_1ch(&m_sg);
-    } else {
-      if (m_fatfs_init) {
-//        fatfs_write_data_gsr(2);
-      }
-    }
+    } 
     // Switch to mode 1:
     ch_mode = 1;
     ads1220_init_temp_regs(); // Write default registers
@@ -878,12 +876,11 @@ void drdy_pin_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
   }
 
   if (m_sg.sg_ch2_count == SG_PACKET_LENGTH) { // mode 1 (temp)
+    m_ch2_complete_flag = true;
     m_sg.sg_ch2_count = -1;
     if (m_connected) {
       ble_sg_update_2ch(&m_sg);
-    } else {
-//      fatfs_write_data_gsr(1);
-    }
+    } 
     // Switch to mode 2:
     ch_mode = 2;
     ads1220_init_default_regs(); // Write default registers
@@ -959,13 +956,31 @@ int main(void) {
   nrf_gpio_pin_clear(LED_2); // Green
   nrf_gpio_pin_set(LED_1);   //Blue
 #endif
-#if defined(APP_TIMER_SAMPLING) && APP_TIMER_SAMPLING == 1
-  m_samples = 0;
-#endif
+
 // Enter main loop
 #if NRF_LOG_ENABLED == 1
   while (1) {
     NRF_LOG_FLUSH();
+    if (m_ch1_complete_flag) {
+      m_ch1_complete_flag = false;
+      if (m_fatfs_init) {
+        fatfs_write_data_gsr(2);
+      }
+    }
+    if (m_ch2_complete_flag) {
+      m_ch2_complete_flag = false;
+      if (m_fatfs_init) {
+        fatfs_write_data_gsr(1);
+      }
+    }
+#if defined(APP_TIMER_SAMPLING) && APP_TIMER_SAMPLING == 1
+    if (m_sampling_timer_expired) {
+      m_sampling_timer_expired = false;
+      //--
+      (void) f_sync(&file_gsr);
+    }
+#endif
+    
   }
 #endif
 }
