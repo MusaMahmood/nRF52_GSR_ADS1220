@@ -63,8 +63,8 @@ typedef struct
   ble_gatts_char_handles_t sg_ch2_handles; /**< Handles related to the our body V measure characteristic. */
   uint8_t sg_ch1_buffer[SG_PACKET_LENGTH]; //246 or 4* = 
   uint8_t sg_ch2_buffer[SG_PACKET_LENGTH]; //246 or 4* = 
-  uint16_t sg_ch1_count;
-  uint16_t sg_ch2_count;
+  int16_t sg_ch1_count;
+  int16_t sg_ch2_count;
 } ble_sg_t;
 
 void ble_sg_service_init(ble_sg_t *p_sg);

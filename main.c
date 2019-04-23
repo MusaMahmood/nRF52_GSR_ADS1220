@@ -79,13 +79,13 @@
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
 #warning("CHECK LFCLK & LED DEFS IN custom_board.h")
+#include "ad5242.h"
 #include "ads1220.h"
 #include "ble_dis.h"
 #include "ble_sg.h"
 #include "nrf_delay.h"
 #include "nrf_drv_gpiote.h"
 #include "uicr_config.h"
-#include "ad5242.h"
 
 static nrf_drv_twi_t m_twi = NRF_DRV_TWI_INSTANCE(1);
 
@@ -93,6 +93,7 @@ static nrf_drv_twi_t m_twi = NRF_DRV_TWI_INSTANCE(1);
 #define DEVICE_FIRMWARE_STRING "Version 14.1.0"
 static bool m_connected = false;
 ble_sg_t m_sg;
+static uint16_t ch_mode = 1;
 
 #if defined(SAADC_ENABLED) && SAADC_ENABLED == 1
 #include "nrf_drv_saadc.h"
@@ -112,8 +113,8 @@ static ble_bas_t m_bas; /**< Structure used to identify the battery service. */
 #define TICKS_SAMPLING_INTERVAL APP_TIMER_TICKS(1000)
 APP_TIMER_DEF(m_sampling_timer_id);
 static uint16_t m_samples;
-static uint16_t ch_mode = 1;
 #endif
+
 #if defined(FATFS_ENABLED) && FATFS_ENABLED == 1
 /* uSD Card/FATFS Stuff: */
 #include "diskio_blkdev.h"
@@ -123,10 +124,8 @@ static uint16_t ch_mode = 1;
 #define SDC_MOSI_PIN 23 ///< SDC serial data in (DI) pin.
 #define SDC_MISO_PIN 21 ///< SDC serial data out (DO) pin.
 #define SDC_CS_PIN 24   ///< SDC chip select (CS) pin.
-#define FILE_NAME "Data.dat"
-
-static uint8_t count_number_samples = 0;
-static int16_t data_to_write[2] = {0, 0};
+#define FILE_NAME_GSR "DataGSR.dat"
+#define FILE_NAME_TEMP "DataTMP.dat"
 /**
  * @brief  SDC block device definition
  * */
@@ -203,23 +202,6 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t *p_file_name) {
 static void m_sampling_timeout_handler(void *p_context) {
   UNUSED_PARAMETER(p_context);
   // TODO: SWAP SETTINGS in ADS1220:
-  if (m_samples % 2 == 0) {
-    ch_mode = 1;
-    ads1220_init_temp_regs(); // Write default registers
-    ads1220_start_sync();         // start converting in continuous mode
-  } else {
-    ch_mode = 2;
-    ads1220_init_default_regs();  // Write default registers
-    ads1220_start_sync();         // start converting in continuous mode
-  }
-  m_samples++;
-  // TODO: Collect in array, and write in groups
-//  uint16_t sample = tmp116_read_data(m_twi);
-//  memcpy_fast(&m_sg.sg_ch2_buffer[m_sg.sg_ch2_count], (uint8_t*) &sample, sizeof(sample));
-//  m_sg.sg_ch2_count+=2;
-//  NRF_LOG_INFO("[#%d]=[%d] \r\n", m_samples, sample);
-
-  // TODO: On finish, write to FATFS
 }
 #endif
 
@@ -236,21 +218,20 @@ static void battery_level_update(void) {
 }
 
 #if defined(FATFS_ENABLED) && FATFS_ENABLED == 1
-static void fatfs_write_data(void) {
-  FRESULT ff_result; 
-  static FIL file; 
-  uint32_t bytes_written; 
+static void fatfs_write_data_gsr(void) {
+  FRESULT ff_result;
+  static FIL file;
+  uint32_t bytes_written;
 
-  NRF_LOG_INFO("Writing to file " FILE_NAME "...\r\n");
-  ff_result = f_open(&file, FILE_NAME, FA_READ | FA_WRITE | FA_OPEN_APPEND);
+  NRF_LOG_INFO("Writing to file " FILE_NAME_GSR "...\r\n");
+  ff_result = f_open(&file, FILE_NAME_GSR, FA_READ | FA_WRITE | FA_OPEN_APPEND);
   if (ff_result != FR_OK) {
-    NRF_LOG_INFO("Unable to open or create file: " FILE_NAME ".\r\n");
+    NRF_LOG_INFO("Unable to open or create file: " FILE_NAME_GSR ".\r\n");
+    NRF_LOG_INFO("ERRCODE: %d\r\n", ff_result);
     return;
   }
-  // Break into individual bytes:
-  uint8_t data_array_bytes[4];
-  memcpy(&data_array_bytes[0], &data_to_write[0], 4);
-  ff_result = f_write(&file, data_array_bytes, 4, (UINT *)&bytes_written);
+
+  ff_result = f_write(&file, &m_sg.sg_ch1_buffer[0], SG_PACKET_LENGTH, (UINT *)&bytes_written);
   if (ff_result != FR_OK) {
     NRF_LOG_INFO("Write failed\r\n.");
   } else {
@@ -258,7 +239,28 @@ static void fatfs_write_data(void) {
   }
 
   (void)f_close(&file);
-}  
+}
+
+void fatfs_write_data_temp(void) {
+  FRESULT ff_result;
+  FIL file;
+  uint32_t bytes_written;
+
+  NRF_LOG_INFO("Writing to file " FILE_NAME_TEMP "...\r\n");
+  ff_result = f_open(&file, FILE_NAME_TEMP, FA_READ | FA_WRITE | FA_OPEN_APPEND);
+  if (ff_result != FR_OK) {
+    NRF_LOG_INFO("Unable to open or create file: " FILE_NAME_TEMP ".\r\n");
+    return;
+  }
+  ff_result = f_write(&file, &m_sg.sg_ch2_buffer[0], SG_PACKET_LENGTH, (UINT *)&bytes_written);
+  if (ff_result != FR_OK) {
+    NRF_LOG_INFO("Write failed\r\n.");
+  } else {
+    NRF_LOG_INFO("%d bytes written.\r\n", bytes_written);
+  }
+
+  (void)f_close(&file);
+}
 #endif
 
 static void battery_level_meas_timeout_handler(void *p_context) {
@@ -825,7 +827,7 @@ void saadc_callback(nrf_drv_saadc_evt_t const *p_event) {
 void saadc_init(void) {
   ret_code_t err_code;
   nrf_drv_saadc_config_t saadc_config;
-  // SAADC Configuration: 
+  // SAADC Configuration:
   saadc_config.low_power_mode = true;                     //Enable low power mode.
   saadc_config.resolution = NRF_SAADC_RESOLUTION_12BIT;   //Set SAADC resolution to 12-bit. This will make the SAADC output values from 0 (when input voltage is 0V) to 2^12=2048 (when input voltage is 3.6V for channel gain setting of 1/6).
   saadc_config.oversample = NRF_SAADC_OVERSAMPLE_4X;      //Set oversample to 4x. This will make the SAADC output a single averaged value when the SAMPLE task is triggered 4 times.
@@ -858,24 +860,33 @@ static void wait_for_event(void) {
   (void)sd_app_evt_wait();
 }
 
-void drdy_pin_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
+static void drdy_pin_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
   UNUSED_PARAMETER(pin);
   UNUSED_PARAMETER(action);
-  
+
   get_data_gsr_temp(&m_sg, ch_mode);
 
-  if (m_sg.sg_ch1_count == SG_PACKET_LENGTH) {
-    m_sg.sg_ch1_count = 0;
+  if (m_sg.sg_ch1_count == SG_PACKET_LENGTH) { // mode 2
+    m_sg.sg_ch1_count = -1;
     // TODO: Write to FATFS:
     ble_sg_update_1ch(&m_sg);
+//    fatfs_write_data_gsr();
+    // Switch to mode 1:
+    ch_mode = 1;
+    ads1220_init_temp_regs(); // Write default registers
+    ads1220_start_sync();     // start converting in continuous mode
   }
 
-  if (m_sg.sg_ch2_count == SG_PACKET_LENGTH) {
-    m_sg.sg_ch2_count = 0;
+  if (m_sg.sg_ch2_count == SG_PACKET_LENGTH) { // mode 1 (temp)
+    m_sg.sg_ch2_count = -1;
     // TODO: Write to FATFS:
-    ble_sg_update_2ch(&m_sg); 
+    //    fatfs_write_data_temp();
+    ble_sg_update_2ch(&m_sg);
+    // Switch to mode 2:
+    ch_mode = 2;
+    ads1220_init_default_regs(); // Write default registers
+    ads1220_start_sync();        // start converting in continuous mode
   }
-
 }
 
 static void ads1220_gpio_init(void) {
@@ -915,8 +926,8 @@ int main(void) {
   conn_params_init();
   m_sg.sg_ch1_count = 0;
   m_sg.sg_ch2_count = 0;
+  
   // ADS1220 Functions:
-  //Reset?
   ads_spi_init();
   ads1220_reset();              // Reset to ensure device is properly working
   ads1220_init_default_regs();  // Write default registers
@@ -927,13 +938,13 @@ int main(void) {
   saadc_init();
 #endif
   // AD5242 Init:
-  ad5242_twi_init(m_twi); 
+  ad5242_twi_init(m_twi);
   ad5242_write_rdac1_value(m_twi, 0xF0);
 //  ad5242_twi_uninit(m_twi);
-  // Initialize TMP Sensor:
-  // Setup FATFS on SPI2:
 #if defined(FATFS_ENABLED) && FATFS_ENABLED == 1
+// Setup FATFS on SPI2:
   fatfs_init();
+  fatfs_write_data_gsr();
 #endif
   // Start execution.
   application_timers_start(); // ONCE CALIBRATION IS COMPLETE!

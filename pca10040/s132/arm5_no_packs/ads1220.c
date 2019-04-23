@@ -206,10 +206,18 @@ void get_data_gsr_temp(ble_sg_t *p_sg, uint16_t ch_mode) {
     __WFE();
   }
   if (ch_mode == 1) {
-    memcpy_fast(&p_sg->sg_ch2_buffer[p_sg->sg_ch2_count], &rx_data[0], 3);
-    p_sg->sg_ch2_count += 3;
+    if (p_sg->sg_ch2_count == -1) {
+      p_sg->sg_ch2_count ++;
+    } else {
+      memcpy_fast(&p_sg->sg_ch2_buffer[p_sg->sg_ch2_count], &rx_data[0], 3);
+      p_sg->sg_ch2_count += 3;
+    }
   } else {
-    memcpy_fast(&p_sg->sg_ch1_buffer[p_sg->sg_ch1_count], &rx_data[0], 3);
-    p_sg->sg_ch1_count += 3;
+    if (p_sg->sg_ch1_count == -1) {
+      p_sg->sg_ch1_count++; 
+    } else {
+      memcpy_fast(&p_sg->sg_ch1_buffer[p_sg->sg_ch1_count], &rx_data[0], 3);
+      p_sg->sg_ch1_count += 3;
+    }
   }
 }

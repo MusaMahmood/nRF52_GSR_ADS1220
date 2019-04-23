@@ -2232,7 +2232,7 @@ Make sure APP_SDCARD_ENABLED = 1, SPI#_ENABLED = 1, and nrf_block_dev_sdc.c, app
  
 
 #ifndef SPI2_DEFAULT_FREQUENCY
-#define SPI2_DEFAULT_FREQUENCY 1
+#define SPI2_DEFAULT_FREQUENCY 1073741824
 #endif
 
 #endif //SPI2_ENABLED
@@ -3088,7 +3088,7 @@ Make sure APP_SDCARD_ENABLED = 1, SPI#_ENABLED = 1, and nrf_block_dev_sdc.c, app
 #if  APP_TIMER_ENABLED
 
 #ifndef APP_TIMER_SAMPLING
-#define APP_TIMER_SAMPLING 1
+#define APP_TIMER_SAMPLING 0
 #endif
 
 // <o> APP_TIMER_CONFIG_RTC_FREQUENCY  - Configure RTC prescaler.
