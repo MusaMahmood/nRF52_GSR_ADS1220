@@ -129,11 +129,18 @@ static volatile bool m_sampling_timer_expired = false;
 static FIL file_gsr; 
 static bool m_fatfs_init = false;
 static uint32_t total_bytes_written = 0; 
-static volatile bool m_ch1_complete_flag = false;
-static volatile bool m_ch2_complete_flag = false;
+
+static volatile bool m_drdy_pin_handler = false;
 
 static volatile bool m_out_of_range_pos_flag = false;
 static volatile bool m_out_of_range_neg_flag = false;
+
+static volatile bool m_calibration_flag = false;
+static volatile int16_t m_calibration_index = 0;
+
+static uint8_t data_packets_written = 0;
+
+static uint32_t m_timestamp_ms = 0;
 
 /**
  * @brief  SDC block device definition
@@ -247,8 +254,13 @@ void fatfs_file_uninit(void) {
 
 void fatfs_write_data_gsr(uint8_t data_type) {
   FRESULT ff_result; 
-  //--
   uint32_t bytes_written; 
+  // Regardless of data type, write timestamp before data
+  ff_result = f_write(&file_gsr, (uint8_t *) &m_timestamp_ms, sizeof(m_timestamp_ms), (UINT *)&bytes_written);
+  total_bytes_written += bytes_written;
+  if (ff_result != FR_OK) {
+    NRF_LOG_INFO("Write failed\r\n.");
+  }
   if (data_type == 2)
     ff_result = f_write(&file_gsr, &m_sg.sg_ch1_buffer[0], SG_PACKET_LENGTH, (UINT *)&bytes_written);
   else
@@ -485,6 +497,7 @@ static void on_ble_evt(ble_evt_t *p_ble_evt) {
   case BLE_GAP_EVT_DISCONNECTED:
     NRF_LOG_INFO("Disconnected.\r\n");
     m_connected = false;
+    fatfs_file_uninit();
 #if LEDS_ENABLE == 1
     nrf_gpio_pin_clear(LED_2); // Blue
     nrf_gpio_pin_set(LED_1);   // Green
@@ -864,31 +877,7 @@ void drdy_pin_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
   UNUSED_PARAMETER(pin);
   UNUSED_PARAMETER(action);
 
-  get_data_gsr_temp(&m_sg, ch_mode);
-
-  if (m_sg.sg_ch1_count == SG_PACKET_LENGTH) { // mode 2
-    m_ch1_complete_flag = true;
-    m_sg.sg_ch1_count = -1;
-    if (m_connected) {
-      ble_sg_update_1ch(&m_sg);
-    } 
-    // Switch to mode 1:
-    ch_mode = 1;
-    ads1220_init_temp_regs(); // Write default registers
-    ads1220_start_sync();     // start converting in continuous mode
-  }
-
-  if (m_sg.sg_ch2_count == SG_PACKET_LENGTH) { // mode 1 (temp)
-    m_ch2_complete_flag = true;
-    m_sg.sg_ch2_count = -1;
-    if (m_connected) {
-      ble_sg_update_2ch(&m_sg);
-    } 
-    // Switch to mode 2:
-    ch_mode = 2;
-    ads1220_init_default_regs(); // Write default registers
-    ads1220_start_sync();        // start converting in continuous mode
-  }
+  m_drdy_pin_handler = true;
 }
 
 static void ads1220_gpio_init(void) {
@@ -965,14 +954,55 @@ int main(void) {
 #if NRF_LOG_ENABLED == 1
   while (1) {
     NRF_LOG_FLUSH();
-    if (m_ch1_complete_flag) {
-      m_ch1_complete_flag = false;
-      if (m_fatfs_init) {
-        fatfs_write_data_gsr(2);
+    if (m_drdy_pin_handler) {
+      m_drdy_pin_handler = false;
+      get_data_gsr_temp(&m_sg, ch_mode);
+
+      if (m_sg.sg_ch1_count == SG_PACKET_LENGTH) { // mode 2
+        m_calibration_flag = true;
+        m_calibration_index = m_sg.sg_ch1_count - 3;
+        m_sg.sg_ch1_count = -1;
+        if (m_connected) {
+          ble_sg_update_1ch(&m_sg);
+        } 
+        if (m_fatfs_init) {
+          fatfs_write_data_gsr(2);
+          data_packets_written++;
+        }
+        // Switch to mode 1:
+        ch_mode = 1;
+        ads1220_init_temp_regs(); // Write default registers
+        ads1220_start_sync();     // start converting in continuous mode
+        // Get current timestamp
+        uint32_t timer_data_ticks = app_timer_cnt_get(); 
+        // Convert to ms:
+        m_timestamp_ms = timer_data_ticks * ( 1000 ) / APP_TIMER_CLOCK_FREQ;
       }
+
+      if (m_sg.sg_ch2_count == SG_PACKET_LENGTH) { // mode 1 (temp)
+        m_sg.sg_ch2_count = -1;
+        if (m_connected) {
+          ble_sg_update_2ch(&m_sg);
+        } 
+        if (m_fatfs_init) {
+          fatfs_write_data_gsr(1);
+          data_packets_written++;
+        }
+        // Switch to mode 2:
+        ch_mode = 2;
+        ads1220_init_default_regs(); // Write default registers
+        ads1220_start_sync();        // start converting in continuous mode
+        // Get current timestamp
+        uint32_t timer_data_ticks = app_timer_cnt_get(); 
+        // Convert to ms:
+        m_timestamp_ms = timer_data_ticks * ( 1000 ) / APP_TIMER_CLOCK_FREQ;
+      }
+    }
+    if (m_calibration_flag) {
+      m_calibration_flag = false;
       // Calibrate if out of range:
       // Re-interpret 24-bit int as 32-bit int
-      int32_t value = ( (m_sg.sg_ch1_buffer[0] << 24) | (m_sg.sg_ch1_buffer[1] << 16) | (m_sg.sg_ch1_buffer[2] << 8) ) >> 8; 
+      int32_t value = ( (m_sg.sg_ch1_buffer[m_calibration_index] << 24) | (m_sg.sg_ch1_buffer[m_calibration_index+1] << 16) | (m_sg.sg_ch1_buffer[m_calibration_index+2] << 8) ) >> 8; 
       NRF_LOG_INFO("Current Value: %d \r\n", value); 
       if (value < 409600 && !m_out_of_range_neg_flag) { // Out of range (V < 0.1)
         NRF_LOG_INFO("[LOW THRESHOLD] - Value out of range! : %d\r\n", value);
@@ -1000,17 +1030,15 @@ int main(void) {
           m_out_of_range_pos_flag = false;
       }
     }
-    if (m_ch2_complete_flag) {
-      m_ch2_complete_flag = false;
-      if (m_fatfs_init) {
-        fatfs_write_data_gsr(1);
-      }
+    if (data_packets_written==10) {
+      data_packets_written = 0;
+      (void) f_sync(&file_gsr);
+      NRF_LOG_INFO("Synchronizing FATFS \r\n");
     }
 #if defined(APP_TIMER_SAMPLING) && APP_TIMER_SAMPLING == 1
     if (m_sampling_timer_expired) {
       m_sampling_timer_expired = false;
-      //--
-      (void) f_sync(&file_gsr);
+      // Synchronize uSD Card Data  
     }
 #endif
     
