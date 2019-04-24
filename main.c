@@ -132,6 +132,9 @@ static uint32_t total_bytes_written = 0;
 static volatile bool m_ch1_complete_flag = false;
 static volatile bool m_ch2_complete_flag = false;
 
+static volatile bool m_out_of_range_pos_flag = false;
+static volatile bool m_out_of_range_neg_flag = false;
+
 /**
  * @brief  SDC block device definition
  * */
@@ -938,7 +941,7 @@ int main(void) {
   saadc_init();
 #endif
   // AD5242 Init:
-  uint8_t ad5242_rdac_val = 52;
+  uint8_t ad5242_rdac_val = 128; // 128 ~= 500kO
   ad5242_twi_init(m_twi);
   ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
 //  ad5242_twi_uninit(m_twi);
@@ -968,22 +971,33 @@ int main(void) {
         fatfs_write_data_gsr(2);
       }
       // Calibrate if out of range:
-      int32_t value = (m_sg.sg_ch1_buffer[0] << 16) | (m_sg.sg_ch1_buffer[1] << 8) | (m_sg.sg_ch1_buffer[2]);
+      // Re-interpret 24-bit int as 32-bit int
+      int32_t value = ( (m_sg.sg_ch1_buffer[0] << 24) | (m_sg.sg_ch1_buffer[1] << 16) | (m_sg.sg_ch1_buffer[2] << 8) ) >> 8; 
       NRF_LOG_INFO("Current Value: %d \r\n", value); 
-      if (value < 409600) { // Out of range (V < 0.1)
+      if (value < 409600 && !m_out_of_range_neg_flag) { // Out of range (V < 0.1)
         NRF_LOG_INFO("[LOW THRESHOLD] - Value out of range! : %d\r\n", value);
-        if (ad5242_rdac_val != 255)
-          ad5242_rdac_val++;
-        ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
-        NRF_LOG_INFO("Updated RDAC Value to %d\r\n", ad5242_rdac_val);
+        m_out_of_range_neg_flag = true;
       } 
 
-      if (value > 6512639) { // Out of range (V > 1.59)
-        NRF_LOG_INFO("[HIGH THRESHOLD] - Value out of range! : %d\r\n", value);
-        if (ad5242_rdac_val != 0)
-          ad5242_rdac_val--;
+      if (m_out_of_range_neg_flag) {
+        if (ad5242_rdac_val != 255) ad5242_rdac_val++; // Increase resistance
         ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
         NRF_LOG_INFO("Updated RDAC Value to %d\r\n", ad5242_rdac_val);
+        if (value > 2457600) // if > 0.6V, stop
+          m_out_of_range_neg_flag = false;
+      }
+
+      if (value > 6512639 && !m_out_of_range_pos_flag) { // Out of range (V > 1.59)
+        NRF_LOG_INFO("[HIGH THRESHOLD] - Value out of range! : %d\r\n", value);
+        m_out_of_range_pos_flag = true;
+      }
+
+      if (m_out_of_range_pos_flag) {
+        if (ad5242_rdac_val != 0) ad5242_rdac_val--; // Decrease resistance
+        ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
+        NRF_LOG_INFO("Updated RDAC Value to %d\r\n", ad5242_rdac_val);
+        if (value < 4096000) // if < 1.0 V, stop
+          m_out_of_range_pos_flag = false;
       }
     }
     if (m_ch2_complete_flag) {
