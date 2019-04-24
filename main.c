@@ -135,6 +135,8 @@ static volatile bool m_ch2_complete_flag = false;
 static volatile bool m_out_of_range_pos_flag = false;
 static volatile bool m_out_of_range_neg_flag = false;
 
+static uint32_t m_timestamp_ms = 0;
+
 /**
  * @brief  SDC block device definition
  * */
@@ -247,8 +249,13 @@ void fatfs_file_uninit(void) {
 
 void fatfs_write_data_gsr(uint8_t data_type) {
   FRESULT ff_result; 
-  //--
   uint32_t bytes_written; 
+  // Regardless of data type, write timestamp before data
+  ff_result = f_write(&file_gsr, (uint8_t *) &m_timestamp_ms, sizeof(m_timestamp_ms), (UINT *)&bytes_written);
+  total_bytes_written += bytes_written;
+  if (ff_result != FR_OK) {
+    NRF_LOG_INFO("Write failed\r\n.");
+  }
   if (data_type == 2)
     ff_result = f_write(&file_gsr, &m_sg.sg_ch1_buffer[0], SG_PACKET_LENGTH, (UINT *)&bytes_written);
   else
@@ -876,6 +883,10 @@ void drdy_pin_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
     ch_mode = 1;
     ads1220_init_temp_regs(); // Write default registers
     ads1220_start_sync();     // start converting in continuous mode
+    // Get current timestamp
+    uint32_t timer_data_ticks = app_timer_cnt_get(); 
+    // Convert to ms:
+    m_timestamp_ms = timer_data_ticks * ( 1000 ) / APP_TIMER_CLOCK_FREQ;
   }
 
   if (m_sg.sg_ch2_count == SG_PACKET_LENGTH) { // mode 1 (temp)
@@ -888,6 +899,10 @@ void drdy_pin_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
     ch_mode = 2;
     ads1220_init_default_regs(); // Write default registers
     ads1220_start_sync();        // start converting in continuous mode
+    // Get current timestamp
+    uint32_t timer_data_ticks = app_timer_cnt_get(); 
+    // Convert to ms:
+    m_timestamp_ms = timer_data_ticks * ( 1000 ) / APP_TIMER_CLOCK_FREQ;
   }
 }
 
@@ -1009,7 +1024,7 @@ int main(void) {
 #if defined(APP_TIMER_SAMPLING) && APP_TIMER_SAMPLING == 1
     if (m_sampling_timer_expired) {
       m_sampling_timer_expired = false;
-      //--
+      // Synchronize uSD Card Data  
       (void) f_sync(&file_gsr);
     }
 #endif
