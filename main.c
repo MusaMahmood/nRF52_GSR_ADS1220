@@ -908,13 +908,13 @@ int main(void) {
   // Initialize.
   log_init();
   timers_init();
-  ble_stack_init();
+  //ble_stack_init();
   ads1220_gpio_init();
-  gap_params_init();
-  gatt_init();
-  advertising_init();
-  services_init();
-  conn_params_init();
+  //gap_params_init();
+  //gatt_init();
+  //advertising_init();
+  //services_init();
+  //conn_params_init();
   m_sg.sg_ch1_count = 0;
   m_sg.sg_ch2_count = 0;
   m_sg.sg_ch1_buffer[0] = 0xFF; // <Starting Marker for New Recording> 0xFFFF followed by 58 zero-bytes
@@ -942,7 +942,7 @@ int main(void) {
 #endif
   // Start execution.
   application_timers_start(); // ONCE CALIBRATION IS COMPLETE!
-  advertising_start();
+  //advertising_start();
   NRF_LOG_RAW_INFO(" BLE Advertising Start! \r\n");
   NRF_LOG_FLUSH();
 #if LEDS_ENABLE == 1
