@@ -2153,7 +2153,7 @@
 // <e> SPI0_ENABLED - Enable SPI0 instance
 //==========================================================
 #ifndef SPI0_ENABLED
-#define SPI0_ENABLED 1
+#define SPI0_ENABLED 0
 #endif
 #if  SPI0_ENABLED
 // <q> SPI0_USE_EASY_DMA  - Use EasyDMA
@@ -2214,7 +2214,7 @@
 // <e> SPI2_ENABLED - Enable SPI2 instance
 //==========================================================
 #ifndef SPI2_ENABLED
-#define SPI2_ENABLED 0
+#define SPI2_ENABLED 1
 #endif
 #if  SPI2_ENABLED
 // <q> SPI2_USE_EASY_DMA  - Use EasyDMA
@@ -2228,7 +2228,7 @@
  
 
 #ifndef SPI2_DEFAULT_FREQUENCY
-#define SPI2_DEFAULT_FREQUENCY 1
+#define SPI2_DEFAULT_FREQUENCY 1073741824
 #endif
 
 #endif //SPI2_ENABLED
@@ -2646,7 +2646,7 @@
 // <e> TWI0_ENABLED - Enable TWI0 instance
 //==========================================================
 #ifndef TWI0_ENABLED
-#define TWI0_ENABLED 0
+#define TWI0_ENABLED 1
 #endif
 #if  TWI0_ENABLED
 // <q> TWI0_USE_EASY_DMA  - Use EasyDMA (if present)
@@ -3084,7 +3084,7 @@
 #if  APP_TIMER_ENABLED
 
 #ifndef APP_TIMER_SAMPLING
-#define APP_TIMER_SAMPLING 1
+#define APP_TIMER_SAMPLING 0
 #endif
 
 // <o> APP_TIMER_CONFIG_RTC_FREQUENCY  - Configure RTC prescaler.

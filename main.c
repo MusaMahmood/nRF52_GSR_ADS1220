@@ -79,16 +79,17 @@
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
 #warning("CHECK LFCLK & LED DEFS IN custom_board.h")
+#include "ad5242.h"
 #include "ads1220.h"
 #include "ble_dis.h"
 #include "ble_sg.h"
 #include "nrf_delay.h"
 #include "nrf_drv_gpiote.h"
-#include "uicr_config.h"
-#include "ad5242.h"
 #include "tmp116.h"
+#include "uicr_config.h"
 
-static nrf_drv_twi_t m_twi = NRF_DRV_TWI_INSTANCE(1);
+static nrf_drv_twi_t m_twi = NRF_DRV_TWI_INSTANCE(0);
+static nrf_drv_twi_t m_twi1 = NRF_DRV_TWI_INSTANCE(1);
 
 #define DEVICE_MODEL_NUMBERSTR "Version 3.1"
 #define DEVICE_FIRMWARE_STRING "Version 14.1.0"
@@ -109,10 +110,17 @@ APP_TIMER_DEF(m_battery_timer_id);                        /**< Battery timer. */
 static ble_bas_t m_bas; /**< Structure used to identify the battery service. */
 #endif
 
+static volatile bool m_drdy_pin_handler = false;
+
+static volatile bool m_out_of_range_pos_flag = false;
+static volatile bool m_out_of_range_neg_flag = false;
+
+static volatile bool m_calibration_flag = false;
+static volatile int16_t m_calibration_index = 0;
+
 #if defined(APP_TIMER_SAMPLING) && APP_TIMER_SAMPLING == 1
 #define TICKS_SAMPLING_INTERVAL APP_TIMER_TICKS(50)
 APP_TIMER_DEF(m_sampling_timer_id);
-static uint16_t m_samples;
 #endif
 
 #define APP_FEATURE_NOT_SUPPORTED BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2 /**< Reply when unsupported features are requested. */
@@ -178,18 +186,12 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t *p_file_name) {
 #if defined(APP_TIMER_SAMPLING) && APP_TIMER_SAMPLING == 1
 static void m_sampling_timeout_handler(void *p_context) {
   UNUSED_PARAMETER(p_context);
-  // TODO: 
-  uint16_t sample = tmp116_read_data(m_twi);
-  m_samples++;
-  NRF_LOG_INFO("[#%d]=[%d] \r\n", m_samples, sample);
 }
 #endif
 
 //#if defined(BLE_BAS_ENABLED) && BLE_BAS_ENABLED == 1
 
 static void battery_level_update(void) {
-//  ret_code_t err_code;
-//TODO: CALL SAADC
 #if defined(SAADC_ENABLED) && SAADC_ENABLED == 1
   //Enable load switch:
   nrf_gpio_pin_clear(BATTERY_LOAD_SWITCH_CTRL_PIN);
@@ -735,16 +737,8 @@ static void wait_for_event(void) {
 void drdy_pin_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
   UNUSED_PARAMETER(pin);
   UNUSED_PARAMETER(action);
-  
-//  NRF_LOG_INFO("DRDY PIN DETECT! \r\n");
 
-  get_gsr_data(&m_sg);
-
-  if (m_sg.sg_ch1_count == SG_PACKET_LENGTH) {
-    m_sg.sg_ch1_count = 0;
-    ble_sg_update_1ch(&m_sg);
-  }
-
+  m_drdy_pin_handler = true;
 }
 
 static void ads1220_gpio_init(void) {
@@ -797,19 +791,17 @@ int main(void) {
   ads1220_check_written_regs(); //Sanity Check. Dump written registers
   ads1220_start_sync();         // start converting in continuous mode
 // Wait for DRDY.
-
-  
-
 #if defined(SAADC_ENABLED) && SAADC_ENABLED == 1
   saadc_init();
 #endif
-  // AD5242 Init:
-  ad5242_twi_init(m_twi); 
-  ad5242_write_rdac1_value(m_twi, 0xFF);
-  ad5242_twi_uninit(m_twi);
+// AD5242 Init:
+  uint8_t ad5242_rdac_val = 128; // 128 ~= 500kO
+  ad5242_twi_init(m_twi);
+  ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
+//  ad5242_twi_uninit(m_twi);
   // Initialize TMP Sensor:
-  tmp116_twi_init(m_twi);
-  tmp116_set_mode(m_twi);
+  tmp116_twi_init(m_twi1);
+  tmp116_set_mode(m_twi1);
   // Start execution.
   application_timers_start();
   advertising_start();
@@ -819,13 +811,64 @@ int main(void) {
   nrf_gpio_pin_clear(LED_2); // Green
   nrf_gpio_pin_set(LED_1);   //Blue
 #endif
-#if defined(APP_TIMER_SAMPLING) && APP_TIMER_SAMPLING == 1
-  m_samples = 0;
-#endif
 // Enter main loop
 #if NRF_LOG_ENABLED == 1
   while (1) {
     NRF_LOG_FLUSH();
+    if (m_drdy_pin_handler) {
+      m_drdy_pin_handler = false;
+      get_gsr_data(&m_sg);
+      if (m_sg.sg_ch1_count == SG_PACKET_LENGTH) { // mode 2
+        m_calibration_flag = true;
+        m_calibration_index = m_sg.sg_ch1_count - 3;
+        m_sg.sg_ch1_count = 0;
+        if (m_connected) {
+          ble_sg_update_1ch(&m_sg);
+        }
+      }
+      uint16_t sample = tmp116_read_data(m_twi1);
+//      NRF_LOG_INFO("[%d] \r\n", sample);
+      memcpy_fast(&m_sg.sg_ch2_buffer[m_sg.sg_ch2_count], (uint8_t *)&sample, sizeof(sample));
+      m_sg.sg_ch2_count += 2;
+      if (m_sg.sg_ch2_count == SG_PACKET_LENGTH) {
+        m_sg.sg_ch2_count = 0;
+        ble_sg_update_2ch(&m_sg);
+      }
+    }
+    if (m_calibration_flag) {
+      m_calibration_flag = false;
+      // Calibrate if out of range:
+      // Re-interpret 24-bit int as 32-bit int
+      int32_t value = ((m_sg.sg_ch1_buffer[m_calibration_index] << 24) | (m_sg.sg_ch1_buffer[m_calibration_index + 1] << 16) | (m_sg.sg_ch1_buffer[m_calibration_index + 2] << 8)) >> 8;
+      NRF_LOG_INFO("Current Value: %d \r\n", value);
+      if (value < 409600 && !m_out_of_range_neg_flag) { // Out of range (V < 0.1)
+        NRF_LOG_INFO("[LOW THRESHOLD] - Value out of range! : %d\r\n", value);
+        m_out_of_range_neg_flag = true;
+      }
+
+      if (m_out_of_range_neg_flag) {
+        if (ad5242_rdac_val != 255)
+          ad5242_rdac_val++; // Increase resistance
+        ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
+        NRF_LOG_INFO("Updated RDAC Value to %d\r\n", ad5242_rdac_val);
+        if (value > 2457600) // if > 0.6V, stop
+          m_out_of_range_neg_flag = false;
+      }
+
+      if (value > 6512639 && !m_out_of_range_pos_flag) { // Out of range (V > 1.59)
+        NRF_LOG_INFO("[HIGH THRESHOLD] - Value out of range! : %d\r\n", value);
+        m_out_of_range_pos_flag = true;
+      }
+
+      if (m_out_of_range_pos_flag) {
+        if (ad5242_rdac_val != 0)
+          ad5242_rdac_val--; // Decrease resistance
+        ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
+        NRF_LOG_INFO("Updated RDAC Value to %d\r\n", ad5242_rdac_val);
+        if (value < 4096000) // if < 1.0 V, stop
+          m_out_of_range_pos_flag = false;
+      }
+    }
   }
 #endif
 }

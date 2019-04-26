@@ -35,7 +35,7 @@ void twi_handler_tmp(nrf_drv_twi_evt_t const *p_event, void *p_context) {
     // if (p_event->xfer_desc.type == NRF_DRV_TWI_XFER_RX) {
     //    data_handler(m_sample);
     // }
-    NRF_LOG_INFO("[TWI_1] - TWI-EVT-DONE\r\n");
+//    NRF_LOG_INFO("[TWI_1] - TWI-EVT-DONE\r\n");
     m_xfer_done = true;
     break;
   case NRF_DRV_TWI_EVT_ADDRESS_NACK:
@@ -100,7 +100,6 @@ uint16_t tmp116_read_data(nrf_drv_twi_t m_twi) {
     ;
   // Reinterpret and print:
   m_sample = ((m_sample << 8) & 0xff00) | ((m_sample >> 8) & 0x00ff);
-  NRF_LOG_INFO("Temperature: 0x%x (as int).\r\n", m_sample);
-
+//  NRF_LOG_INFO("Temperature: 0x%x (as int).\r\n", m_sample);
   return m_sample;
 }

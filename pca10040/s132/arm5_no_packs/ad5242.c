@@ -38,7 +38,7 @@ void twi_handler(nrf_drv_twi_evt_t const *p_event, void *p_context) {
 //    if (p_event->xfer_desc.type == NRF_DRV_TWI_XFER_RX) {
 //      data_handler(m_rdac1_value);
 //    }
-    NRF_LOG_INFO("[TWI_1] - TWI-EVT-DONE\r\n");
+//    NRF_LOG_INFO("[TWI_1] - TWI-EVT-DONE\r\n");
     m_xfer_done = true;
     break;
   case NRF_DRV_TWI_EVT_ADDRESS_NACK:
@@ -94,7 +94,7 @@ void ad5242_write_rdac1_value(nrf_drv_twi_t m_twi, uint8_t value) {
   uint8_t write_data[2] = {AD5242_INSTRUCTION_RDAC1, 0x00};
   memcpy(&write_data[1], (uint8_t *) &value, 1);
   APP_ERROR_CHECK(nrf_drv_twi_tx(&m_twi, AD5242_ADDRESS_WRITE, write_data, sizeof(write_data), false));
-  NRF_LOG_INFO("[WRITE, TWI_1] - SUCCESS \r\n");
+//  NRF_LOG_INFO("[WRITE, TWI_1] - SUCCESS \r\n");
 }
 
 void ad5242_write_rdac1_value_temp(nrf_drv_twi_t m_twi) {

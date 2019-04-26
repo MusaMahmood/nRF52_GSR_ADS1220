@@ -36,7 +36,7 @@ uint8_t ads1220_default_regs[] = {
     ADS1220_REGDEFAULT_CFG3,
 };
 
-static const nrf_drv_spi_t spi = NRF_DRV_SPI_INSTANCE(0);
+static const nrf_drv_spi_t spi = NRF_DRV_SPI_INSTANCE(2);
 static volatile bool spi_xfer_done;
 
 /**
