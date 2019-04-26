@@ -49,8 +49,11 @@
 // Characteristic UUIDs
 #define BLE_UUID_SG_CH1_CHAR 0xA731
 #define BLE_UUID_SG_CH2_CHAR 0xA732
+#define BLE_UUID_SG_CH3_CHAR 0xA733
+#define BLE_UUID_SG_CH4_CHAR 0xA734
 
 #define SG_PACKET_LENGTH 60
+#define SG_PACKET_LENGTH_TMP 40
 
 /**@brief Biopotential Measurement Service init structure. This contains all options and data needed for
  *        initialization of the service. */
@@ -61,8 +64,10 @@ typedef struct
   uint16_t service_handle; /**< Handle of ble Service (as provided by the BLE stack). */
   ble_gatts_char_handles_t sg_ch1_handles; /**< Handles related to the our body V measure characteristic. */
   ble_gatts_char_handles_t sg_ch2_handles; /**< Handles related to the our body V measure characteristic. */
+  ble_gatts_char_handles_t sg_ch3_handles; /**< Handles related to the our body V measure characteristic. */
+  ble_gatts_char_handles_t sg_ch4_handles; /**< Handles related to the our body V measure characteristic. */
   uint8_t sg_ch1_buffer[SG_PACKET_LENGTH]; //246 or 4* = 
-  uint8_t sg_ch2_buffer[SG_PACKET_LENGTH]; //246 or 4* = 
+  uint8_t sg_ch2_buffer[SG_PACKET_LENGTH_TMP]; //246 or 4* = 
   int16_t sg_ch1_count;
   int16_t sg_ch2_count;
 } ble_sg_t;
@@ -87,5 +92,15 @@ void ble_sg_update_1ch(ble_sg_t *p_sg);
 *
 */
 void ble_sg_update_2ch(ble_sg_t *p_sg);
+
+/**@brief function for updating/notifying BLE of new value for main ADC (strain gauge or GSR data) for second device
+*
+*/
+void ble_sg_update_3ch(ble_sg_t *p_sg);
+
+/**@brief function for updating/notifying BLE of new value for temp sensor for second device
+*
+*/
+void ble_sg_update_4ch(ble_sg_t *p_sg);
 
 #endif // BLE_SG_H__

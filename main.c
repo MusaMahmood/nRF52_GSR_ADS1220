@@ -118,6 +118,8 @@ static volatile bool m_out_of_range_neg_flag = false;
 static volatile bool m_calibration_flag = false;
 static volatile int16_t m_calibration_index = 0;
 
+#define DEVICE_NUMBER 1
+
 #if defined(APP_TIMER_SAMPLING) && APP_TIMER_SAMPLING == 1
 #define TICKS_SAMPLING_INTERVAL APP_TIMER_TICKS(50)
 APP_TIMER_DEF(m_sampling_timer_id);
@@ -125,14 +127,14 @@ APP_TIMER_DEF(m_sampling_timer_id);
 
 #define APP_FEATURE_NOT_SUPPORTED BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2 /**< Reply when unsupported features are requested. */
 
-#define DEVICE_NAME "nRF52-GSR" //"nRF52_SG"         /**< Name of device. Will be included in the advertising data. */
+#define DEVICE_NAME "GSR_DEV"STRINGIFY(DEVICE_NUMBER) //"nRF52_SG"         /**< Name of device. Will be included in the advertising data. */
 
 #define MANUFACTURER_NAME "Potato Labs" /**< Manufacturer. Will be passed to Device Information Service. */
 #define APP_ADV_INTERVAL 300            /**< The advertising interval (in units of 0.625 ms. This value corresponds to 187.5 ms). */
 #define APP_ADV_TIMEOUT_IN_SECONDS 180  /**< The advertising timeout in units of seconds. */
 
-#define MIN_CONN_INTERVAL MSEC_TO_UNITS(7.5, UNIT_1_25_MS) /**< Minimum acceptable connection interval (0.1 seconds). */
-#define MAX_CONN_INTERVAL MSEC_TO_UNITS(20, UNIT_1_25_MS)  /**< Maximum acceptable connection interval (0.2 second). */
+#define MIN_CONN_INTERVAL MSEC_TO_UNITS(100, UNIT_1_25_MS) /**< Minimum acceptable connection interval (0.1 seconds). */
+#define MAX_CONN_INTERVAL MSEC_TO_UNITS(200, UNIT_1_25_MS)  /**< Maximum acceptable connection interval (0.2 second). */
 #define SLAVE_LATENCY 0                                    /**< Slave latency. */
 #define CONN_SUP_TIMEOUT MSEC_TO_UNITS(4000, UNIT_10_MS)   /**< Connection supervisory timeout (4 seconds). */
 
@@ -827,16 +829,24 @@ int main(void) {
       if (m_sg.sg_ch1_count == SG_PACKET_LENGTH) { // mode 2
         m_sg.sg_ch1_count = 0;
         if (m_connected) {
+#if DEVICE_NUMBER == 1
           ble_sg_update_1ch(&m_sg);
+#elif DEVICE_NUMBER == 2
+          ble_sg_update_3ch(&m_sg);
+#endif
         }
       }
       uint16_t sample = tmp116_read_data(m_twi1);
 //      NRF_LOG_INFO("[%d] \r\n", sample);
       memcpy_fast(&m_sg.sg_ch2_buffer[m_sg.sg_ch2_count], (uint8_t *)&sample, sizeof(sample));
       m_sg.sg_ch2_count += 2;
-      if (m_sg.sg_ch2_count == SG_PACKET_LENGTH) {
+      if (m_sg.sg_ch2_count == SG_PACKET_LENGTH_TMP) {
         m_sg.sg_ch2_count = 0;
+#if DEVICE_NUMBER == 1
         ble_sg_update_2ch(&m_sg);
+#elif DEVICE_NUMBER == 2
+        ble_sg_update_4ch(&m_sg);
+#endif
       }
     }
     if (m_calibration_flag) {
