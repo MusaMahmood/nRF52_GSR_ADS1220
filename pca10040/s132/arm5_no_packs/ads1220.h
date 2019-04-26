@@ -47,8 +47,8 @@
 #define ADS1220_REGADDR_CFG3 0x03
 
 // Default Values: 
-#define ADS1220_REGDEFAULT_CFG0 0x00 // 0b0000|000|0 :[AINP = AIN0, AINN = AIN1, Gain=1, PGA enabled]
-#define ADS1220_REGDEFAULT_CFG1 0x04 // 0b000|00|1|0|0 :[20 SPS, Normal mode, Continuous conversion, no temp sens, no burn-out sources]
+#define ADS1220_REGDEFAULT_CFG0 0x01 // 0b0000|000|0 :[AINP = AIN0, AINN = AIN1, Gain=1, PGA disabled & bypassed]
+#define ADS1220_REGDEFAULT_CFG1 0x0C // 0b000|01|1|0|0 :[Duty-cycle mode, 5sps, Continuous conversion, no temp sens, no burn-out sources]
 #define ADS1220_REGDEFAULT_CFG2 0x00 // 0b00|00|0|000 :[Internal Reference, No FIR filter, switch between AIN3/REFN1 and AVSS open, IDAC off]
 #define ADS1220_REGDEFAULT_CFG3 0x00 // 0b000|000|0|0 :[IDAC1 disabled, IDAC2 disabled, DRDY mode on DRDY only, Reserved (0)]
 

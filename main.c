@@ -818,9 +818,13 @@ int main(void) {
     if (m_drdy_pin_handler) {
       m_drdy_pin_handler = false;
       get_gsr_data(&m_sg);
-      if (m_sg.sg_ch1_count == SG_PACKET_LENGTH) { // mode 2
+      
+      if ( ( (m_sg.sg_ch1_count % 9) == 0) && m_sg.sg_ch1_count != 0) {
         m_calibration_flag = true;
         m_calibration_index = m_sg.sg_ch1_count - 3;
+      }
+      
+      if (m_sg.sg_ch1_count == SG_PACKET_LENGTH) { // mode 2
         m_sg.sg_ch1_count = 0;
         if (m_connected) {
           ble_sg_update_1ch(&m_sg);
