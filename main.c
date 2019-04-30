@@ -710,7 +710,7 @@ void saadc_init(void) {
 
   ret_code_t err_code;
   nrf_drv_saadc_config_t saadc_config;
-  //TODO: Adjust Configuration: SAADC
+  // Adjust Configuration: SAADC
   saadc_config.low_power_mode = true;                     //Enable low power mode.
   saadc_config.resolution = NRF_SAADC_RESOLUTION_12BIT;   //Set SAADC resolution to 12-bit. This will make the SAADC output values from 0 (when input voltage is 0V) to 2^12=2048 (when input voltage is 3.6V for channel gain setting of 1/6).
   saadc_config.oversample = NRF_SAADC_OVERSAMPLE_4X;      //Set oversample to 4x. This will make the SAADC output a single averaged value when the SAMPLE task is triggered 4 times.
@@ -829,14 +829,12 @@ int main(void) {
       uint32_t timer_data_ticks = app_timer_cnt_get(); 
       // Convert to ms:
       m_timestamp_ms = timer_data_ticks * ( 1000 ) / APP_TIMER_CLOCK_FREQ;
-      // TODO: Copy timestamp to FATFS buffer
       #if defined(APP_SDCARD_ENABLED) && APP_SDCARD_ENABLED == 1
         memcpy_fast(&fatfs_buffer_array[fatfs_buffer_count], (uint8_t *) &m_timestamp_ms, sizeof(m_timestamp_ms) - 1);
         fatfs_buffer_count += (sizeof(m_timestamp_ms) - 1); // Last byte is always zero. 
       #endif 
       m_drdy_pin_handler = false;
       get_gsr_data(&m_sg);
-      // TODO: Copy GSR value to FATFS buffer
       #if defined(APP_SDCARD_ENABLED) && APP_SDCARD_ENABLED == 1
         memcpy_fast(&fatfs_buffer_array[fatfs_buffer_count], &m_sg.sg_ch1_buffer[m_sg.sg_ch1_count - 3], 3);
         fatfs_buffer_count += 3;
@@ -856,7 +854,6 @@ int main(void) {
         }
       }
       uint16_t sample = tmp116_read_data(m_twi1);
-      // TODO: Copy temp value to FATFS buffer
       #if defined(APP_SDCARD_ENABLED) && APP_SDCARD_ENABLED == 1
         memcpy_fast(&fatfs_buffer_array[fatfs_buffer_count], (uint8_t *)&sample, sizeof(sample));
         fatfs_buffer_count += sizeof(sample);
@@ -873,12 +870,38 @@ int main(void) {
 #endif
         }
       }
-      // TODO: Once buffer is full, run fatfs write protocol (shut off everything and write). 
-      // For now just track the data in the buffer:
+#if defined(APP_SDCARD_ENABLED) && APP_SDCARD_ENABLED == 1
+      // TODO: Once buffer is full, run fatfs write protocol (shut off everything and write).  
+      NRF_LOG_INFO("fatfs_buffer_count: %d \r\n", fatfs_buffer_count); 
       if (fatfs_buffer_count >= FATFS_BUFFER_SIZE) {
         fatfs_buffer_count = 0;
+        //Disable SPI for ADS1220:
+        ads1220_powerdown();
+        ads_spi_uninit();
+        //Disable TWI for TMP116:
+        tmp116_twi_uninit(m_twi1);
+        //Disable TWI for AD5242:
+        ad5242_twi_uninit(m_twi); 
+        //TODO: Init FATFS:
+
+        //TODO: Fatfs Write:
+        
+        //TODO: Disable FATFS
+        
+        // Re-enable AD5242 & set to ad5242_rdac_val
+        ad5242_twi_init(m_twi);
+        ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
+        // Re-enable TMP116
+        tmp116_twi_init(m_twi1);
+        tmp116_set_mode(m_twi1);
+        // Re-enable ADS1220 and start cycle.
+        ads_spi_init();
+        ads1220_reset();              // Reset to ensure device is properly working
+        ads1220_init_default_regs();  // Write default registers
+        ads1220_start_sync();         // start converting in continuous mode
       }
     }
+#endif
     if (m_calibration_flag) {
       m_calibration_flag = false;
       // Calibrate if out of range: Re-interpret 24-bit int as 32-bit int

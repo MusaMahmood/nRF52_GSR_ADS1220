@@ -63,6 +63,10 @@ void ads_spi_init(void) {
   APP_ERROR_CHECK(nrf_drv_spi_init(&spi, &spi_config, spi_event_handler, NULL));
 }
 
+void ads_spi_uninit(void) {
+  nrf_drv_spi_uninit(&spi); 
+}
+
 /* Control Functions */
 
 void ads1220_init_default_regs(void) {

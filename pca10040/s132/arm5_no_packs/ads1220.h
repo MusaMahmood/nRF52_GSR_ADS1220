@@ -55,6 +55,8 @@
 // Function Definitions
 void ads_spi_init(void);
 
+void ads_spi_uninit(void);
+
 void ads1220_init_default_regs(void);
 
 void ads1220_init_temp_regs(void);
