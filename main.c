@@ -125,6 +125,13 @@ static volatile int16_t m_calibration_index = 0;
 APP_TIMER_DEF(m_sampling_timer_id);
 #endif
 
+#if defined(APP_SDCARD_ENABLED) && APP_SDCARD_ENABLED == 1
+  #define FATFS_BUFFER_SIZE 1024
+  uint8_t fatfs_buffer_array[FATFS_BUFFER_SIZE];
+  uint16_t fatfs_buffer_count = 0;
+  static uint32_t m_timestamp_ms = 0;
+#endif
+
 #define APP_FEATURE_NOT_SUPPORTED BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2 /**< Reply when unsupported features are requested. */
 
 #define DEVICE_NAME "GSR_DEV"STRINGIFY(DEVICE_NUMBER) //"nRF52_SG"         /**< Name of device. Will be included in the advertising data. */
@@ -818,14 +825,26 @@ int main(void) {
   while (1) {
     NRF_LOG_FLUSH();
     if (m_drdy_pin_handler) {
+      // Get current timestamp
+      uint32_t timer_data_ticks = app_timer_cnt_get(); 
+      // Convert to ms:
+      m_timestamp_ms = timer_data_ticks * ( 1000 ) / APP_TIMER_CLOCK_FREQ;
+      // TODO: Copy timestamp to FATFS buffer
+      #if defined(APP_SDCARD_ENABLED) && APP_SDCARD_ENABLED == 1
+        memcpy_fast(&fatfs_buffer_array[fatfs_buffer_count], (uint8_t *) &m_timestamp_ms, sizeof(m_timestamp_ms) - 1);
+        fatfs_buffer_count += (sizeof(m_timestamp_ms) - 1); // Last byte is always zero. 
+      #endif 
       m_drdy_pin_handler = false;
       get_gsr_data(&m_sg);
-      
+      // TODO: Copy GSR value to FATFS buffer
+      #if defined(APP_SDCARD_ENABLED) && APP_SDCARD_ENABLED == 1
+        memcpy_fast(&fatfs_buffer_array[fatfs_buffer_count], &m_sg.sg_ch1_buffer[m_sg.sg_ch1_count - 3], 3);
+        fatfs_buffer_count += 3;
+      #endif
       if ( ( (m_sg.sg_ch1_count % 9) == 0) && m_sg.sg_ch1_count != 0) {
         m_calibration_flag = true;
         m_calibration_index = m_sg.sg_ch1_count - 3;
       }
-      
       if (m_sg.sg_ch1_count == SG_PACKET_LENGTH) { // mode 2
         m_sg.sg_ch1_count = 0;
         if (m_connected) {
@@ -837,22 +856,32 @@ int main(void) {
         }
       }
       uint16_t sample = tmp116_read_data(m_twi1);
-//      NRF_LOG_INFO("[%d] \r\n", sample);
+      // TODO: Copy temp value to FATFS buffer
+      #if defined(APP_SDCARD_ENABLED) && APP_SDCARD_ENABLED == 1
+        memcpy_fast(&fatfs_buffer_array[fatfs_buffer_count], (uint8_t *)&sample, sizeof(sample));
+        fatfs_buffer_count += sizeof(sample);
+      #endif
       memcpy_fast(&m_sg.sg_ch2_buffer[m_sg.sg_ch2_count], (uint8_t *)&sample, sizeof(sample));
       m_sg.sg_ch2_count += 2;
       if (m_sg.sg_ch2_count == SG_PACKET_LENGTH_TMP) {
         m_sg.sg_ch2_count = 0;
+        if (m_connected) {
 #if DEVICE_NUMBER == 1
-        ble_sg_update_2ch(&m_sg);
+          ble_sg_update_2ch(&m_sg);
 #elif DEVICE_NUMBER == 2
-        ble_sg_update_4ch(&m_sg);
+          ble_sg_update_4ch(&m_sg);
 #endif
+        }
+      }
+      // TODO: Once buffer is full, run fatfs write protocol (shut off everything and write). 
+      // For now just track the data in the buffer:
+      if (fatfs_buffer_count >= FATFS_BUFFER_SIZE) {
+        fatfs_buffer_count = 0;
       }
     }
     if (m_calibration_flag) {
       m_calibration_flag = false;
-      // Calibrate if out of range:
-      // Re-interpret 24-bit int as 32-bit int
+      // Calibrate if out of range: Re-interpret 24-bit int as 32-bit int
       int32_t value = ((m_sg.sg_ch1_buffer[m_calibration_index] << 24) | (m_sg.sg_ch1_buffer[m_calibration_index + 1] << 16) | (m_sg.sg_ch1_buffer[m_calibration_index + 2] << 8)) >> 8;
       NRF_LOG_INFO("Current Value: %d \r\n", value);
       if (value < 409600 && !m_out_of_range_neg_flag) { // Out of range (V < 0.1)
