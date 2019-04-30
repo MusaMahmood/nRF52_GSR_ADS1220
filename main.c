@@ -85,16 +85,16 @@
 #include "ble_sg.h"
 #include "nrf_delay.h"
 #include "nrf_drv_gpiote.h"
+#include "tmp116.h"
 #include "uicr_config.h"
 
-static nrf_drv_twi_t m_twi = NRF_DRV_TWI_INSTANCE(1);
+static nrf_drv_twi_t m_twi = NRF_DRV_TWI_INSTANCE(0);
+static nrf_drv_twi_t m_twi1 = NRF_DRV_TWI_INSTANCE(1);
 
 #define DEVICE_MODEL_NUMBERSTR "Version 3.1"
 #define DEVICE_FIRMWARE_STRING "Version 14.1.0"
 static bool m_connected = false;
-
 ble_sg_t m_sg;
-static uint16_t ch_mode = 1;
 
 #if defined(SAADC_ENABLED) && SAADC_ENABLED == 1
 #include "nrf_drv_saadc.h"
@@ -110,26 +110,6 @@ APP_TIMER_DEF(m_battery_timer_id);                        /**< Battery timer. */
 static ble_bas_t m_bas; /**< Structure used to identify the battery service. */
 #endif
 
-#if defined(APP_TIMER_SAMPLING) && APP_TIMER_SAMPLING == 1
-#define TICKS_SAMPLING_INTERVAL APP_TIMER_TICKS(1000)
-APP_TIMER_DEF(m_sampling_timer_id);
-static volatile bool m_sampling_timer_expired = false;
-#endif
-
-#if defined(FATFS_ENABLED) && FATFS_ENABLED == 1
-/* uSD Card/FATFS Stuff: */
-#include "diskio_blkdev.h"
-#include "ff.h"
-#include "nrf_block_dev_sdc.h"
-#define SDC_SCK_PIN 22  ///< SDC serial clock (SCK) pin.
-#define SDC_MOSI_PIN 23 ///< SDC serial data in (DI) pin.
-#define SDC_MISO_PIN 21 ///< SDC serial data out (DO) pin.
-#define SDC_CS_PIN 24   ///< SDC chip select (CS) pin.
-#define FILE_NAME_GSR "DataGSR.dat"
-static FIL file_gsr; 
-static bool m_fatfs_init = false;
-static uint32_t total_bytes_written = 0; 
-
 static volatile bool m_drdy_pin_handler = false;
 
 static volatile bool m_out_of_range_pos_flag = false;
@@ -138,32 +118,23 @@ static volatile bool m_out_of_range_neg_flag = false;
 static volatile bool m_calibration_flag = false;
 static volatile int16_t m_calibration_index = 0;
 
-static uint8_t data_packets_written = 0;
+#define DEVICE_NUMBER 1
 
-static uint32_t m_timestamp_ms = 0;
-
-/**
- * @brief  SDC block device definition
- * */
-NRF_BLOCK_DEV_SDC_DEFINE(
-    m_block_dev_sdc,
-    NRF_BLOCK_DEV_SDC_CONFIG(
-        SDC_SECTOR_SIZE,
-        APP_SDCARD_CONFIG(SDC_MOSI_PIN, SDC_MISO_PIN, SDC_SCK_PIN, SDC_CS_PIN)),
-    NFR_BLOCK_DEV_INFO_CONFIG("Nordic", "SDC", "1.00"));
-/* END FATFS */
+#if defined(APP_TIMER_SAMPLING) && APP_TIMER_SAMPLING == 1
+#define TICKS_SAMPLING_INTERVAL APP_TIMER_TICKS(50)
+APP_TIMER_DEF(m_sampling_timer_id);
 #endif
 
 #define APP_FEATURE_NOT_SUPPORTED BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2 /**< Reply when unsupported features are requested. */
 
-#define DEVICE_NAME "nRF52-GSR" //"nRF52_SG"         /**< Name of device. Will be included in the advertising data. */
+#define DEVICE_NAME "GSR_DEV"STRINGIFY(DEVICE_NUMBER) //"nRF52_SG"         /**< Name of device. Will be included in the advertising data. */
 
 #define MANUFACTURER_NAME "Potato Labs" /**< Manufacturer. Will be passed to Device Information Service. */
 #define APP_ADV_INTERVAL 300            /**< The advertising interval (in units of 0.625 ms. This value corresponds to 187.5 ms). */
 #define APP_ADV_TIMEOUT_IN_SECONDS 180  /**< The advertising timeout in units of seconds. */
 
-#define MIN_CONN_INTERVAL MSEC_TO_UNITS(7.5, UNIT_1_25_MS) /**< Minimum acceptable connection interval (0.1 seconds). */
-#define MAX_CONN_INTERVAL MSEC_TO_UNITS(20, UNIT_1_25_MS)  /**< Maximum acceptable connection interval (0.2 second). */
+#define MIN_CONN_INTERVAL MSEC_TO_UNITS(100, UNIT_1_25_MS) /**< Minimum acceptable connection interval (0.1 seconds). */
+#define MAX_CONN_INTERVAL MSEC_TO_UNITS(200, UNIT_1_25_MS)  /**< Maximum acceptable connection interval (0.2 second). */
 #define SLAVE_LATENCY 0                                    /**< Slave latency. */
 #define CONN_SUP_TIMEOUT MSEC_TO_UNITS(4000, UNIT_10_MS)   /**< Connection supervisory timeout (4 seconds). */
 
@@ -217,14 +188,12 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t *p_file_name) {
 #if defined(APP_TIMER_SAMPLING) && APP_TIMER_SAMPLING == 1
 static void m_sampling_timeout_handler(void *p_context) {
   UNUSED_PARAMETER(p_context);
-  m_sampling_timer_expired = true;
 }
 #endif
 
 //#if defined(BLE_BAS_ENABLED) && BLE_BAS_ENABLED == 1
 
 static void battery_level_update(void) {
-// CALL SAADC
 #if defined(SAADC_ENABLED) && SAADC_ENABLED == 1
   //Enable load switch:
   nrf_gpio_pin_clear(BATTERY_LOAD_SWITCH_CTRL_PIN);
@@ -232,48 +201,6 @@ static void battery_level_update(void) {
   nrf_drv_saadc_sample();
 #endif
 }
-
-#if defined(FATFS_ENABLED) && FATFS_ENABLED == 1
-void fatfs_file_init(void) {
-  FRESULT ff_result; 
-  NRF_LOG_INFO("Opening File " FILE_NAME_GSR "... \r\n"); 
-  ff_result = f_open(&file_gsr, FILE_NAME_GSR, FA_READ | FA_WRITE | FA_OPEN_APPEND);
-  if (ff_result != FR_OK) {
-    NRF_LOG_INFO("Unable to open or create file: " FILE_NAME_GSR ".\r\n");
-    NRF_LOG_INFO("ERRCODE: %d\r\n", ff_result);
-    return;
-  }
-  m_fatfs_init = true;
-}
-
-void fatfs_file_uninit(void) {
-  NRF_LOG_INFO("Closing File " FILE_NAME_GSR "... \r\n"); 
-  m_fatfs_init = false;
-  (void) f_close(&file_gsr);
-}
-
-void fatfs_write_data_gsr(uint8_t data_type) {
-  FRESULT ff_result; 
-  uint32_t bytes_written; 
-  // Regardless of data type, write timestamp before data
-  ff_result = f_write(&file_gsr, (uint8_t *) &m_timestamp_ms, sizeof(m_timestamp_ms), (UINT *)&bytes_written);
-  total_bytes_written += bytes_written;
-  if (ff_result != FR_OK) {
-    NRF_LOG_INFO("Write failed\r\n.");
-  }
-  if (data_type == 2)
-    ff_result = f_write(&file_gsr, &m_sg.sg_ch1_buffer[0], SG_PACKET_LENGTH, (UINT *)&bytes_written);
-  else
-    ff_result = f_write(&file_gsr, &m_sg.sg_ch2_buffer[0], SG_PACKET_LENGTH, (UINT *)&bytes_written);
-  total_bytes_written += bytes_written;
-  if (ff_result != FR_OK) {
-    NRF_LOG_INFO("Write failed\r\n.");
-  } else {
-    NRF_LOG_INFO("%d bytes written || TOTAL: %d\r\n", bytes_written, total_bytes_written);
-  }
-}
-
-#endif
 
 static void battery_level_meas_timeout_handler(void *p_context) {
   UNUSED_PARAMETER(p_context);
@@ -497,7 +424,6 @@ static void on_ble_evt(ble_evt_t *p_ble_evt) {
   case BLE_GAP_EVT_DISCONNECTED:
     NRF_LOG_INFO("Disconnected.\r\n");
     m_connected = false;
-    fatfs_file_uninit();
 #if LEDS_ENABLE == 1
     nrf_gpio_pin_clear(LED_2); // Blue
     nrf_gpio_pin_set(LED_1);   // Green
@@ -505,6 +431,7 @@ static void on_ble_evt(ble_evt_t *p_ble_evt) {
     advertising_start();
     break; // BLE_GAP_EVT_DISCONNECTED
   case BLE_GAP_EVT_CONNECTED:
+    battery_level_update();
 #if LEDS_ENABLE == 1
     nrf_gpio_pin_set(LED_2);
     nrf_gpio_pin_clear(LED_1);
@@ -742,71 +669,6 @@ static void advertising_start(void) {
   APP_ERROR_CHECK(err_code);
 }
 
-#if defined(FATFS_ENABLED) && FATFS_ENABLED == 1
-static void fatfs_init(void) {
-  static FATFS fs;
-  static DIR dir;
-  static FILINFO fno;
-  //
-
-  //  uint32_t bytes_written;
-  FRESULT ff_result;
-  DSTATUS disk_state = STA_NOINIT;
-
-  // Initialize FATFS disk I/O interface by providing the block device.
-  static diskio_blkdev_t drives[] =
-      {
-          DISKIO_BLOCKDEV_CONFIG(NRF_BLOCKDEV_BASE_ADDR(m_block_dev_sdc, block_dev), NULL)};
-
-  diskio_blockdev_register(drives, ARRAY_SIZE(drives));
-
-  NRF_LOG_INFO("Initializing disk 0 (SDC)...\r\n");
-  for (uint32_t retries = 3; retries && disk_state; --retries) {
-    disk_state = disk_initialize(0);
-  }
-  if (disk_state) {
-    NRF_LOG_INFO("Disk initialization failed.\r\n");
-    NRF_LOG_INFO("Make sure disk is properly formatted (FAT32).\r\n");
-    return;
-  }
-
-  uint32_t blocks_per_mb = (1024uL * 1024uL) / m_block_dev_sdc.block_dev.p_ops->geometry(&m_block_dev_sdc.block_dev)->blk_size;
-  uint32_t capacity = m_block_dev_sdc.block_dev.p_ops->geometry(&m_block_dev_sdc.block_dev)->blk_count / blocks_per_mb;
-  NRF_LOG_INFO("Capacity: %d MB\r\n", capacity);
-
-  NRF_LOG_INFO("Mounting volume...\r\n");
-  ff_result = f_mount(&fs, "", 1);
-  if (ff_result) {
-    NRF_LOG_INFO("Mount failed.\r\n");
-    return;
-  }
-
-  NRF_LOG_INFO("\r\n Listing directory: /\r\n");
-  ff_result = f_opendir(&dir, "/");
-  if (ff_result) {
-    NRF_LOG_INFO("Directory listing failed!\r\n");
-    return;
-  }
-
-  do {
-    ff_result = f_readdir(&dir, &fno);
-    if (ff_result != FR_OK) {
-      NRF_LOG_INFO("Directory read failed.");
-      return;
-    }
-
-    if (fno.fname[0]) {
-      if (fno.fattrib & AM_DIR) {
-        NRF_LOG_RAW_INFO("   <DIR>   %s\r\n", (uint32_t)fno.fname);
-      } else {
-        NRF_LOG_RAW_INFO("%9lu  %s\r\n", fno.fsize, (uint32_t)fno.fname);
-      }
-    }
-  } while (fno.fname[0]);
-  NRF_LOG_RAW_INFO("\r\n");
-}
-#endif
-
 #if defined(SAADC_ENABLED) && SAADC_ENABLED == 1
 
 void saadc_callback(nrf_drv_saadc_evt_t const *p_event) {
@@ -838,9 +700,10 @@ void saadc_callback(nrf_drv_saadc_evt_t const *p_event) {
 }
 
 void saadc_init(void) {
+
   ret_code_t err_code;
   nrf_drv_saadc_config_t saadc_config;
-  // SAADC Configuration:
+  //TODO: Adjust Configuration: SAADC
   saadc_config.low_power_mode = true;                     //Enable low power mode.
   saadc_config.resolution = NRF_SAADC_RESOLUTION_12BIT;   //Set SAADC resolution to 12-bit. This will make the SAADC output values from 0 (when input voltage is 0V) to 2^12=2048 (when input voltage is 3.6V for channel gain setting of 1/6).
   saadc_config.oversample = NRF_SAADC_OVERSAMPLE_4X;      //Set oversample to 4x. This will make the SAADC output a single averaged value when the SAMPLE task is triggered 4 times.
@@ -898,6 +761,12 @@ static void ads1220_gpio_init(void) {
   NRF_LOG_FLUSH();
   APP_ERROR_CHECK(err_code);
   nrf_drv_gpiote_in_event_enable(ADS1220_DRDY_PIN, true);
+  //  nrf_gpio_cfg_output(BATTERY_LOAD_SWITCH_CTRL_PIN);
+  //  nrf_gpio_pin_set(BATTERY_LOAD_SWITCH_CTRL_PIN); //OFF
+  //#ifdef BATTERY_LOAD_SWITCH_CTRL_PIN
+  //  nrf_gpio_cfg_output(BATTERY_LOAD_SWITCH_CTRL_PIN);
+  //  nrf_gpio_pin_set(BATTERY_LOAD_SWITCH_CTRL_PIN); //OFF
+  //#endif
 }
 
 /**@brief Function for application main entry.
@@ -916,10 +785,8 @@ int main(void) {
   services_init();
   conn_params_init();
   m_sg.sg_ch1_count = 0;
-  m_sg.sg_ch2_count = 0;
-  m_sg.sg_ch1_buffer[0] = 0xFF; // <Starting Marker for New Recording> 0xFFFF followed by 58 zero-bytes
-  m_sg.sg_ch1_buffer[1] = 0xFF;
   // ADS1220 Functions:
+  //Reset?
   ads_spi_init();
   ads1220_reset();              // Reset to ensure device is properly working
   ads1220_init_default_regs();  // Write default registers
@@ -929,19 +796,16 @@ int main(void) {
 #if defined(SAADC_ENABLED) && SAADC_ENABLED == 1
   saadc_init();
 #endif
-  // AD5242 Init:
+// AD5242 Init:
   uint8_t ad5242_rdac_val = 128; // 128 ~= 500kO
   ad5242_twi_init(m_twi);
   ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
 //  ad5242_twi_uninit(m_twi);
-#if defined(FATFS_ENABLED) && FATFS_ENABLED == 1
-// Setup FATFS on SPI2:
-  fatfs_init();
-  fatfs_file_init();
-  fatfs_write_data_gsr(2); // Write Starting Frame.
-#endif
+  // Initialize TMP Sensor:
+  tmp116_twi_init(m_twi1);
+  tmp116_set_mode(m_twi1);
   // Start execution.
-  application_timers_start(); // ONCE CALIBRATION IS COMPLETE!
+  application_timers_start();
   advertising_start();
   NRF_LOG_RAW_INFO(" BLE Advertising Start! \r\n");
   NRF_LOG_FLUSH();
@@ -949,68 +813,56 @@ int main(void) {
   nrf_gpio_pin_clear(LED_2); // Green
   nrf_gpio_pin_set(LED_1);   //Blue
 #endif
-
 // Enter main loop
 #if NRF_LOG_ENABLED == 1
   while (1) {
     NRF_LOG_FLUSH();
     if (m_drdy_pin_handler) {
       m_drdy_pin_handler = false;
-      get_data_gsr_temp(&m_sg, ch_mode);
-
-      if (m_sg.sg_ch1_count == SG_PACKET_LENGTH) { // mode 2
+      get_gsr_data(&m_sg);
+      
+      if ( ( (m_sg.sg_ch1_count % 9) == 0) && m_sg.sg_ch1_count != 0) {
         m_calibration_flag = true;
         m_calibration_index = m_sg.sg_ch1_count - 3;
-        m_sg.sg_ch1_count = -1;
-        if (m_connected) {
-          ble_sg_update_1ch(&m_sg);
-        } 
-        if (m_fatfs_init) {
-          fatfs_write_data_gsr(2);
-          data_packets_written++;
-        }
-        // Switch to mode 1:
-        ch_mode = 1;
-        ads1220_init_temp_regs(); // Write default registers
-        ads1220_start_sync();     // start converting in continuous mode
-        // Get current timestamp
-        uint32_t timer_data_ticks = app_timer_cnt_get(); 
-        // Convert to ms:
-        m_timestamp_ms = timer_data_ticks * ( 1000 ) / APP_TIMER_CLOCK_FREQ;
       }
-
-      if (m_sg.sg_ch2_count == SG_PACKET_LENGTH) { // mode 1 (temp)
-        m_sg.sg_ch2_count = -1;
+      
+      if (m_sg.sg_ch1_count == SG_PACKET_LENGTH) { // mode 2
+        m_sg.sg_ch1_count = 0;
         if (m_connected) {
-          ble_sg_update_2ch(&m_sg);
-        } 
-        if (m_fatfs_init) {
-          fatfs_write_data_gsr(1);
-          data_packets_written++;
+#if DEVICE_NUMBER == 1
+          ble_sg_update_1ch(&m_sg);
+#elif DEVICE_NUMBER == 2
+          ble_sg_update_3ch(&m_sg);
+#endif
         }
-        // Switch to mode 2:
-        ch_mode = 2;
-        ads1220_init_default_regs(); // Write default registers
-        ads1220_start_sync();        // start converting in continuous mode
-        // Get current timestamp
-        uint32_t timer_data_ticks = app_timer_cnt_get(); 
-        // Convert to ms:
-        m_timestamp_ms = timer_data_ticks * ( 1000 ) / APP_TIMER_CLOCK_FREQ;
+      }
+      uint16_t sample = tmp116_read_data(m_twi1);
+//      NRF_LOG_INFO("[%d] \r\n", sample);
+      memcpy_fast(&m_sg.sg_ch2_buffer[m_sg.sg_ch2_count], (uint8_t *)&sample, sizeof(sample));
+      m_sg.sg_ch2_count += 2;
+      if (m_sg.sg_ch2_count == SG_PACKET_LENGTH_TMP) {
+        m_sg.sg_ch2_count = 0;
+#if DEVICE_NUMBER == 1
+        ble_sg_update_2ch(&m_sg);
+#elif DEVICE_NUMBER == 2
+        ble_sg_update_4ch(&m_sg);
+#endif
       }
     }
     if (m_calibration_flag) {
       m_calibration_flag = false;
       // Calibrate if out of range:
       // Re-interpret 24-bit int as 32-bit int
-      int32_t value = ( (m_sg.sg_ch1_buffer[m_calibration_index] << 24) | (m_sg.sg_ch1_buffer[m_calibration_index+1] << 16) | (m_sg.sg_ch1_buffer[m_calibration_index+2] << 8) ) >> 8; 
-      NRF_LOG_INFO("Current Value: %d \r\n", value); 
+      int32_t value = ((m_sg.sg_ch1_buffer[m_calibration_index] << 24) | (m_sg.sg_ch1_buffer[m_calibration_index + 1] << 16) | (m_sg.sg_ch1_buffer[m_calibration_index + 2] << 8)) >> 8;
+      NRF_LOG_INFO("Current Value: %d \r\n", value);
       if (value < 409600 && !m_out_of_range_neg_flag) { // Out of range (V < 0.1)
         NRF_LOG_INFO("[LOW THRESHOLD] - Value out of range! : %d\r\n", value);
         m_out_of_range_neg_flag = true;
-      } 
+      }
 
       if (m_out_of_range_neg_flag) {
-        if (ad5242_rdac_val != 255) ad5242_rdac_val++; // Increase resistance
+        if (ad5242_rdac_val != 255)
+          ad5242_rdac_val++; // Increase resistance
         ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
         NRF_LOG_INFO("Updated RDAC Value to %d\r\n", ad5242_rdac_val);
         if (value > 2457600) // if > 0.6V, stop
@@ -1023,25 +875,14 @@ int main(void) {
       }
 
       if (m_out_of_range_pos_flag) {
-        if (ad5242_rdac_val != 0) ad5242_rdac_val--; // Decrease resistance
+        if (ad5242_rdac_val != 0)
+          ad5242_rdac_val--; // Decrease resistance
         ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
         NRF_LOG_INFO("Updated RDAC Value to %d\r\n", ad5242_rdac_val);
         if (value < 4096000) // if < 1.0 V, stop
           m_out_of_range_pos_flag = false;
       }
     }
-    if (data_packets_written==10) {
-      data_packets_written = 0;
-      (void) f_sync(&file_gsr);
-      NRF_LOG_INFO("Synchronizing FATFS \r\n");
-    }
-#if defined(APP_TIMER_SAMPLING) && APP_TIMER_SAMPLING == 1
-    if (m_sampling_timer_expired) {
-      m_sampling_timer_expired = false;
-      // Synchronize uSD Card Data  
-    }
-#endif
-    
   }
 #endif
 }
