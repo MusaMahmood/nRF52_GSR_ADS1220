@@ -130,6 +130,24 @@ APP_TIMER_DEF(m_sampling_timer_id);
   uint8_t fatfs_buffer_array[FATFS_BUFFER_SIZE];
   uint16_t fatfs_buffer_count = 0;
   static uint32_t m_timestamp_ms = 0;
+
+  #include "diskio_blkdev.h"
+  #include "ff.h"
+  #include "nrf_block_dev_sdc.h"
+  #define SDC_SCK_PIN 22  ///< SDC serial clock (SCK) pin.
+  #define SDC_MOSI_PIN 23 ///< SDC serial data in (DI) pin.
+  #define SDC_MISO_PIN 21 ///< SDC serial data out (DO) pin.
+  #define SDC_CS_PIN 24   ///< SDC chip select (CS) pin.
+  #define FILE_NAME "DataGSR.dat"
+  static FIL file_gsr; 
+  static bool m_fatfs_init = false;
+
+  NRF_BLOCK_DEV_SDC_DEFINE(
+    m_block_dev_sdc,
+    NRF_BLOCK_DEV_SDC_CONFIG(
+        SDC_SECTOR_SIZE,
+        APP_SDCARD_CONFIG(SDC_MOSI_PIN, SDC_MISO_PIN, SDC_SCK_PIN, SDC_CS_PIN)),
+    NFR_BLOCK_DEV_INFO_CONFIG("Nordic", "SDC", "1.00"));
 #endif
 
 #define APP_FEATURE_NOT_SUPPORTED BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2 /**< Reply when unsupported features are requested. */
@@ -768,13 +786,94 @@ static void ads1220_gpio_init(void) {
   NRF_LOG_FLUSH();
   APP_ERROR_CHECK(err_code);
   nrf_drv_gpiote_in_event_enable(ADS1220_DRDY_PIN, true);
-  //  nrf_gpio_cfg_output(BATTERY_LOAD_SWITCH_CTRL_PIN);
-  //  nrf_gpio_pin_set(BATTERY_LOAD_SWITCH_CTRL_PIN); //OFF
-  //#ifdef BATTERY_LOAD_SWITCH_CTRL_PIN
-  //  nrf_gpio_cfg_output(BATTERY_LOAD_SWITCH_CTRL_PIN);
-  //  nrf_gpio_pin_set(BATTERY_LOAD_SWITCH_CTRL_PIN); //OFF
-  //#endif
 }
+
+#if defined(APP_SDCARD_ENABLED) && APP_SDCARD_ENABLED == 1
+static void fatfs_write(void) {
+  // TODO: INIT:
+  static FATFS fs;
+  static DIR dir;
+  static FILINFO fno;
+
+  FRESULT ff_result;
+  DSTATUS disk_state = STA_NOINIT;
+
+  // Initialize FATFS disk I/O interface by providing the block device.
+  static diskio_blkdev_t drives[] =
+      {
+          DISKIO_BLOCKDEV_CONFIG(NRF_BLOCKDEV_BASE_ADDR(m_block_dev_sdc, block_dev), NULL)};
+
+  diskio_blockdev_register(drives, ARRAY_SIZE(drives));
+
+  NRF_LOG_INFO("Initializing disk 0 (SDC)...\r\n");
+  for (uint32_t retries = 3; retries && disk_state; --retries) {
+    disk_state = disk_initialize(0);
+  }
+  if (disk_state) {
+    NRF_LOG_INFO("Disk initialization failed.\r\n");
+    return;
+  }
+
+  uint32_t blocks_per_mb = (1024uL * 1024uL) / m_block_dev_sdc.block_dev.p_ops->geometry(&m_block_dev_sdc.block_dev)->blk_size;
+  uint32_t capacity = m_block_dev_sdc.block_dev.p_ops->geometry(&m_block_dev_sdc.block_dev)->blk_count / blocks_per_mb;
+  NRF_LOG_INFO("Capacity: %d MB\r\n", capacity);
+
+  NRF_LOG_INFO("Mounting volume...\r\n");
+  ff_result = f_mount(&fs, "", 1);
+  if (ff_result) {
+    NRF_LOG_INFO("Mount failed.\r\n");
+    return;
+  }
+
+  NRF_LOG_INFO("\r\n Listing directory: /\r\n");
+  ff_result = f_opendir(&dir, "/");
+  if (ff_result) {
+    NRF_LOG_INFO("Directory listing failed!\r\n");
+    return;
+  }
+
+  do {
+    ff_result = f_readdir(&dir, &fno);
+    if (ff_result != FR_OK) {
+      NRF_LOG_INFO("Directory read failed.");
+      return;
+    }
+
+    if (fno.fname[0]) {
+      if (fno.fattrib & AM_DIR) {
+        NRF_LOG_RAW_INFO("   <DIR>   %s\r\n", (uint32_t)fno.fname);
+      } else {
+        NRF_LOG_RAW_INFO("%9lu  %s\r\n", fno.fsize, (uint32_t)fno.fname);
+      }
+    }
+  } while (fno.fname[0]);
+  NRF_LOG_RAW_INFO("\r\n");
+  //TODO: Write:
+  static FIL file; 
+  uint32_t bytes_written; 
+
+  NRF_LOG_INFO("Writing to file " FILE_NAME "...\r\n");
+  ff_result = f_open(&file, FILE_NAME, FA_READ | FA_WRITE | FA_OPEN_APPEND);
+  if (ff_result != FR_OK) {
+    NRF_LOG_INFO("Unable to open or create file: " FILE_NAME ".\r\n");
+    return;
+  }
+  // Write array:
+  ff_result = f_write(&file, fatfs_buffer_array, FATFS_BUFFER_SIZE, (UINT *)&bytes_written);
+  if (ff_result != FR_OK) {
+    NRF_LOG_INFO("Write failed\r\n.");
+  } else {
+    NRF_LOG_INFO("%d bytes written.\r\n", bytes_written);
+  }
+
+  (void)f_close(&file);
+  //TODO: Uninit: 
+  disk_state = disk_uninitialize(0);
+  NRF_LOG_INFO("Disk UNinitialized.\r\n");
+
+}
+
+#endif
 
 /**@brief Function for application main entry.
  */
@@ -792,6 +891,7 @@ int main(void) {
   services_init();
   conn_params_init();
   m_sg.sg_ch1_count = 0;
+  m_sg.sg_ch2_count = 0;
   // ADS1220 Functions:
   //Reset?
   ads_spi_init();
@@ -871,9 +971,8 @@ int main(void) {
         }
       }
 #if defined(APP_SDCARD_ENABLED) && APP_SDCARD_ENABLED == 1
-      // TODO: Once buffer is full, run fatfs write protocol (shut off everything and write).  
-      NRF_LOG_INFO("fatfs_buffer_count: %d \r\n", fatfs_buffer_count); 
-      if (fatfs_buffer_count >= FATFS_BUFFER_SIZE) {
+      // TODO: Once buffer is full, run fatfs write protocol (shut off everything and write).
+      if (fatfs_buffer_count == FATFS_BUFFER_SIZE) {
         fatfs_buffer_count = 0;
         //Disable SPI for ADS1220:
         ads1220_powerdown();
@@ -882,12 +981,8 @@ int main(void) {
         tmp116_twi_uninit(m_twi1);
         //Disable TWI for AD5242:
         ad5242_twi_uninit(m_twi); 
-        //TODO: Init FATFS:
-
-        //TODO: Fatfs Write:
-        
-        //TODO: Disable FATFS
-        
+        //TODO: Init FATFS; Write; Disable FATFS
+        fatfs_write();
         // Re-enable AD5242 & set to ad5242_rdac_val
         ad5242_twi_init(m_twi);
         ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);

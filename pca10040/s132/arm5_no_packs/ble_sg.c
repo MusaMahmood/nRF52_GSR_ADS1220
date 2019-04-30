@@ -267,7 +267,7 @@ void ble_sg_update_1ch(ble_sg_t *p_sg) {
 void ble_sg_update_2ch(ble_sg_t *p_sg) {
   uint32_t err_code;
   if (p_sg->conn_handle != BLE_CONN_HANDLE_INVALID) {
-    uint16_t hvx_len = SG_PACKET_LENGTH;
+    uint16_t hvx_len = SG_PACKET_LENGTH_TMP;
     ble_gatts_hvx_params_t const hvx_params = {
         .handle = p_sg->sg_ch2_handles.value_handle,
         .type = BLE_GATT_HVX_NOTIFICATION,
@@ -305,7 +305,7 @@ void ble_sg_update_3ch(ble_sg_t *p_sg) {
 void ble_sg_update_4ch(ble_sg_t *p_sg) {
   uint32_t err_code;
   if (p_sg->conn_handle != BLE_CONN_HANDLE_INVALID) {
-    uint16_t hvx_len = SG_PACKET_LENGTH;
+    uint16_t hvx_len = SG_PACKET_LENGTH_TMP;
     ble_gatts_hvx_params_t const hvx_params = {
         .handle = p_sg->sg_ch4_handles.value_handle,
         .type = BLE_GATT_HVX_NOTIFICATION,
