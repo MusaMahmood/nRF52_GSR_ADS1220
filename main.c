@@ -883,15 +883,13 @@ int main(void) {
   // Initialize.
   log_init();
   timers_init();
-//  ble_stack_init();
+  ble_stack_init();
   ads1220_gpio_init();
 //  gap_params_init();
 //  gatt_init();
 //  advertising_init();
 //  services_init();
 //  conn_params_init();
-//  m_sg.sg_ch1_count = 0;
-//  m_sg.sg_ch2_count = 0;
   // ADS1220 Functions:
   //Reset?
   ads_spi_init();
@@ -982,11 +980,6 @@ int main(void) {
       // TODO: Once buffer is full, run fatfs write protocol (shut off everything and write).
       if (fatfs_buffer_count == FATFS_BUFFER_SIZE) {
         fatfs_buffer_count = 0;
-        //Disable SPI for ADS1220:
-//        ads1220_powerdown();
-//        ads_spi_uninit();
-        //Disable TWI for TMP116:
-//        tmp116_twi_uninit(m_twi1);
         //Disable TWI for AD5242:
         ad5242_twi_uninit(m_twi); 
         //TODO: Init FATFS; Write; Disable FATFS
@@ -995,9 +988,6 @@ int main(void) {
         // Re-enable AD5242 & set to ad5242_rdac_val
         ad5242_twi_init(m_twi);
         ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
-        // Re-enable TMP116
-//        tmp116_twi_init(m_twi1);
-//        tmp116_set_mode(m_twi1);
       } // if (fatfs_buffer_count == FATFS_BUFFER_SIZE)
 #endif
     } // if (m_drdy_pin_handler)
