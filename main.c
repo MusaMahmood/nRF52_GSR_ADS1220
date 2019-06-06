@@ -126,7 +126,7 @@ APP_TIMER_DEF(m_sampling_timer_id);
 #endif
 
 #if defined(APP_SDCARD_ENABLED) && APP_SDCARD_ENABLED == 1
-  #define FATFS_BUFFER_SIZE 1024
+  #define FATFS_BUFFER_SIZE 3072
   uint8_t fatfs_buffer_array[FATFS_BUFFER_SIZE];
   uint16_t fatfs_buffer_count = 0;
   static uint32_t m_timestamp_ms = 0;
@@ -883,15 +883,15 @@ int main(void) {
   // Initialize.
   log_init();
   timers_init();
-  ble_stack_init();
+//  ble_stack_init();
   ads1220_gpio_init();
-  gap_params_init();
-  gatt_init();
-  advertising_init();
-  services_init();
-  conn_params_init();
-  m_sg.sg_ch1_count = 0;
-  m_sg.sg_ch2_count = 0;
+//  gap_params_init();
+//  gatt_init();
+//  advertising_init();
+//  services_init();
+//  conn_params_init();
+//  m_sg.sg_ch1_count = 0;
+//  m_sg.sg_ch2_count = 0;
   // ADS1220 Functions:
   //Reset?
   ads_spi_init();
@@ -913,7 +913,7 @@ int main(void) {
   tmp116_set_mode(m_twi1);
   // Start execution.
   application_timers_start();
-  advertising_start();
+//  advertising_start();
   NRF_LOG_RAW_INFO(" BLE Advertising Start! \r\n");
   NRF_LOG_FLUSH();
 #if LEDS_ENABLE == 1
@@ -922,6 +922,7 @@ int main(void) {
 #endif
 // Enter main loop
 #if NRF_LOG_ENABLED == 1
+  int32_t gsr_value;
   while (1) {
     NRF_LOG_FLUSH();
     if (m_drdy_pin_handler) {
@@ -930,46 +931,80 @@ int main(void) {
       // Convert to ms:
       m_timestamp_ms = timer_data_ticks * ( 1000 ) / APP_TIMER_CLOCK_FREQ;
       #if defined(APP_SDCARD_ENABLED) && APP_SDCARD_ENABLED == 1
-        memcpy_fast(&fatfs_buffer_array[fatfs_buffer_count], (uint8_t *) &m_timestamp_ms, sizeof(m_timestamp_ms) - 1);
-        fatfs_buffer_count += (sizeof(m_timestamp_ms) - 1); // Last byte is always zero. 
+        memcpy_fast(&fatfs_buffer_array[fatfs_buffer_count], (uint8_t *) &m_timestamp_ms, sizeof(m_timestamp_ms));
+        fatfs_buffer_count += (sizeof(m_timestamp_ms)); 
       #endif 
       m_drdy_pin_handler = false;
-      get_gsr_data(&m_sg);
+      gsr_value = get_gsr_data_int();
+      m_calibration_flag = true;
       #if defined(APP_SDCARD_ENABLED) && APP_SDCARD_ENABLED == 1
-        memcpy_fast(&fatfs_buffer_array[fatfs_buffer_count], &m_sg.sg_ch1_buffer[m_sg.sg_ch1_count - 3], 3);
-        fatfs_buffer_count += 3;
+        memcpy_fast(&fatfs_buffer_array[fatfs_buffer_count], (uint8_t *) &gsr_value, sizeof(gsr_value));
+        fatfs_buffer_count += sizeof(gsr_value);
       #endif
-      if ( ( (m_sg.sg_ch1_count % 9) == 0) && m_sg.sg_ch1_count != 0) {
-        m_calibration_flag = true;
-        m_calibration_index = m_sg.sg_ch1_count - 3;
-      }
-      if (m_sg.sg_ch1_count == SG_PACKET_LENGTH) { // mode 2
-        m_sg.sg_ch1_count = 0;
-        if (m_connected) {
-#if DEVICE_NUMBER == 1
-          ble_sg_update_1ch(&m_sg);
-#elif DEVICE_NUMBER == 2
-          ble_sg_update_3ch(&m_sg);
-#endif
-        }
-      }
-      uint16_t sample = tmp116_read_data(m_twi1);
+//      if ( ( (m_sg.sg_ch1_count % 9) == 0) && m_sg.sg_ch1_count != 0) {
+//        m_calibration_flag = true;
+//        m_calibration_index = m_sg.sg_ch1_count - 3;
+//      }
+//      if (m_sg.sg_ch1_count == SG_PACKET_LENGTH) { // mode 2
+//        m_sg.sg_ch1_count = 0;
+//        if (m_connected) {
+//#if DEVICE_NUMBER == 1
+//          ble_sg_update_1ch(&m_sg);
+//#elif DEVICE_NUMBER == 2
+//          ble_sg_update_3ch(&m_sg);
+//#endif
+//        }
+//      }
+      uint32_t sample = (uint32_t) tmp116_read_data(m_twi1);
       #if defined(APP_SDCARD_ENABLED) && APP_SDCARD_ENABLED == 1
         memcpy_fast(&fatfs_buffer_array[fatfs_buffer_count], (uint8_t *)&sample, sizeof(sample));
         fatfs_buffer_count += sizeof(sample);
       #endif
-      memcpy_fast(&m_sg.sg_ch2_buffer[m_sg.sg_ch2_count], (uint8_t *)&sample, sizeof(sample));
-      m_sg.sg_ch2_count += 2;
-      if (m_sg.sg_ch2_count == SG_PACKET_LENGTH_TMP) {
-        m_sg.sg_ch2_count = 0;
-        if (m_connected) {
-#if DEVICE_NUMBER == 1
-          ble_sg_update_2ch(&m_sg);
-#elif DEVICE_NUMBER == 2
-          ble_sg_update_4ch(&m_sg);
-#endif
-        }
-      }
+//      memcpy_fast(&m_sg.sg_ch2_buffer[m_sg.sg_ch2_count], (uint8_t *)&sample, sizeof(sample));
+//      m_sg.sg_ch2_count += 2;
+//      if (m_sg.sg_ch2_count == SG_PACKET_LENGTH_TMP) {
+//        m_sg.sg_ch2_count = 0;
+//        if (m_connected) {
+//#if DEVICE_NUMBER == 1
+//          ble_sg_update_2ch(&m_sg);
+//#elif DEVICE_NUMBER == 2
+//          ble_sg_update_4ch(&m_sg);
+//#endif
+//        }
+//      }
+  if (m_calibration_flag) {
+    m_calibration_flag = false;
+    // Calibrate if out of range: Re-interpret 24-bit int as 32-bit int
+//      int32_t value = ((m_sg.sg_ch1_buffer[m_calibration_index] << 24) | (m_sg.sg_ch1_buffer[m_calibration_index + 1] << 16) | (m_sg.sg_ch1_buffer[m_calibration_index + 2] << 8)) >> 8;
+    NRF_LOG_INFO("Current Value: %d \r\n", gsr_value);
+    if (gsr_value < 409600 && !m_out_of_range_neg_flag) { // Out of range (V < 0.1)
+      NRF_LOG_INFO("[LOW THRESHOLD] - Value out of range! : %d\r\n", gsr_value);
+      m_out_of_range_neg_flag = true;
+    }
+
+    if (m_out_of_range_neg_flag) {
+      if (ad5242_rdac_val != 255)
+        ad5242_rdac_val++; // Increase resistance
+      ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
+      NRF_LOG_INFO("Updated RDAC Value to %d\r\n", ad5242_rdac_val);
+      if (gsr_value > 2457600) // if > 0.6V, stop
+        m_out_of_range_neg_flag = false;
+    }
+
+    if (gsr_value > 6512639 && !m_out_of_range_pos_flag) { // Out of range (V > 1.59)
+      NRF_LOG_INFO("[HIGH THRESHOLD] - Value out of range! : %d\r\n", gsr_value);
+      m_out_of_range_pos_flag = true;
+    }
+
+    if (m_out_of_range_pos_flag) {
+      if (ad5242_rdac_val != 0)
+        ad5242_rdac_val--; // Decrease resistance
+      ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
+      NRF_LOG_INFO("Updated RDAC Value to %d\r\n", ad5242_rdac_val);
+      if (gsr_value < 4096000) // if < 1.0 V, stop
+        m_out_of_range_pos_flag = false;
+    }
+  }
 #if defined(APP_SDCARD_ENABLED) && APP_SDCARD_ENABLED == 1
       // TODO: Once buffer is full, run fatfs write protocol (shut off everything and write).
       if (fatfs_buffer_count == FATFS_BUFFER_SIZE) {
@@ -983,6 +1018,8 @@ int main(void) {
         ad5242_twi_uninit(m_twi); 
         //TODO: Init FATFS; Write; Disable FATFS
         fatfs_write();
+        m_fatfs_init = true;
+//        nrf_delay_ms(100);
         // Re-enable AD5242 & set to ad5242_rdac_val
         ad5242_twi_init(m_twi);
         ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
@@ -997,39 +1034,7 @@ int main(void) {
       }
     }
 #endif
-    if (m_calibration_flag) {
-      m_calibration_flag = false;
-      // Calibrate if out of range: Re-interpret 24-bit int as 32-bit int
-      int32_t value = ((m_sg.sg_ch1_buffer[m_calibration_index] << 24) | (m_sg.sg_ch1_buffer[m_calibration_index + 1] << 16) | (m_sg.sg_ch1_buffer[m_calibration_index + 2] << 8)) >> 8;
-      NRF_LOG_INFO("Current Value: %d \r\n", value);
-      if (value < 409600 && !m_out_of_range_neg_flag) { // Out of range (V < 0.1)
-        NRF_LOG_INFO("[LOW THRESHOLD] - Value out of range! : %d\r\n", value);
-        m_out_of_range_neg_flag = true;
-      }
-
-      if (m_out_of_range_neg_flag) {
-        if (ad5242_rdac_val != 255)
-          ad5242_rdac_val++; // Increase resistance
-        ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
-        NRF_LOG_INFO("Updated RDAC Value to %d\r\n", ad5242_rdac_val);
-        if (value > 2457600) // if > 0.6V, stop
-          m_out_of_range_neg_flag = false;
-      }
-
-      if (value > 6512639 && !m_out_of_range_pos_flag) { // Out of range (V > 1.59)
-        NRF_LOG_INFO("[HIGH THRESHOLD] - Value out of range! : %d\r\n", value);
-        m_out_of_range_pos_flag = true;
-      }
-
-      if (m_out_of_range_pos_flag) {
-        if (ad5242_rdac_val != 0)
-          ad5242_rdac_val--; // Decrease resistance
-        ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
-        NRF_LOG_INFO("Updated RDAC Value to %d\r\n", ad5242_rdac_val);
-        if (value < 4096000) // if < 1.0 V, stop
-          m_out_of_range_pos_flag = false;
-      }
-    }
+    
   }
 #endif
 }

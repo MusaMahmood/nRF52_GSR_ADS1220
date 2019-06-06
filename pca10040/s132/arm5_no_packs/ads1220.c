@@ -64,7 +64,7 @@ void ads_spi_init(void) {
 }
 
 void ads_spi_uninit(void) {
-  nrf_drv_spi_uninit(&spi); 
+  nrf_drv_spi_uninit(&spi);
 }
 
 /* Control Functions */
@@ -158,13 +158,24 @@ void ads1220_powerdown(void) {
   NRF_LOG_INFO(" Powerdown ADS1220..\r\n");
 }
 
-void get_gsr_data(ble_sg_t *p_sg) {
+//void get_gsr_data(ble_sg_t *p_sg) {
+//  uint8_t rx_data[3];
+//  spi_xfer_done = false;
+//  APP_ERROR_CHECK(nrf_drv_spi_transfer(&spi, NULL, NULL, rx_data, 3));
+//  while (!spi_xfer_done) {
+//    __WFE();
+//  }
+//  memcpy_fast(&p_sg->sg_ch1_buffer[p_sg->sg_ch1_count], &rx_data[0], 3);
+//  p_sg->sg_ch1_count += 3;
+//}
+
+int32_t get_gsr_data_int(void) {
   uint8_t rx_data[3];
   spi_xfer_done = false;
   APP_ERROR_CHECK(nrf_drv_spi_transfer(&spi, NULL, NULL, rx_data, 3));
   while (!spi_xfer_done) {
     __WFE();
   }
-  memcpy_fast(&p_sg->sg_ch1_buffer[p_sg->sg_ch1_count], &rx_data[0], 3);
-  p_sg->sg_ch1_count += 3;
+  int32_t value = ((rx_data[0] << 24) | (rx_data[1] << 16) | (rx_data[2] << 8)) >> 8;
+  return value;
 }

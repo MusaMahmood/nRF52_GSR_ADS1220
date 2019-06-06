@@ -1123,7 +1123,7 @@ Make sure APP_SDCARD_ENABLED = 1, SPI#_ENABLED = 1, and nrf_block_dev_sdc.c, app
 // <e> PERIPHERAL_RESOURCE_SHARING_ENABLED - nrf_drv_common - Peripheral drivers common module
 //==========================================================
 #ifndef PERIPHERAL_RESOURCE_SHARING_ENABLED
-#define PERIPHERAL_RESOURCE_SHARING_ENABLED 0
+#define PERIPHERAL_RESOURCE_SHARING_ENABLED 1
 #endif
 #if  PERIPHERAL_RESOURCE_SHARING_ENABLED
 // <e> COMMON_CONFIG_LOG_ENABLED - Enables logging in the module.

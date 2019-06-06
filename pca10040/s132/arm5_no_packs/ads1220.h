@@ -71,8 +71,8 @@ void ads1220_powerdown(void);
 
 //void ads1220_readdata(void);
 
-void get_gsr_data(ble_sg_t *p_sg);
+//void get_gsr_data(ble_sg_t *p_sg);
 
-void get_data_gsr_temp(ble_sg_t *p_sg, uint16_t ch_mode);
+int32_t get_gsr_data_int(void);
 
 #endif // ADS1220_H__

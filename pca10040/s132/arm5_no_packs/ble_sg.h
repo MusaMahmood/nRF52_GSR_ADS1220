@@ -66,10 +66,10 @@ typedef struct
   ble_gatts_char_handles_t sg_ch2_handles; /**< Handles related to the our body V measure characteristic. */
   ble_gatts_char_handles_t sg_ch3_handles; /**< Handles related to the our body V measure characteristic. */
   ble_gatts_char_handles_t sg_ch4_handles; /**< Handles related to the our body V measure characteristic. */
-  uint8_t sg_ch1_buffer[SG_PACKET_LENGTH]; //246 or 4* = 
-  uint8_t sg_ch2_buffer[SG_PACKET_LENGTH_TMP]; //246 or 4* = 
-  int16_t sg_ch1_count;
-  int16_t sg_ch2_count;
+//  uint8_t sg_ch1_buffer[SG_PACKET_LENGTH]; //246 or 4* = 
+//  uint8_t sg_ch2_buffer[SG_PACKET_LENGTH_TMP]; //246 or 4* = 
+//  int16_t sg_ch1_count;
+//  int16_t sg_ch2_count;
 } ble_sg_t;
 
 void ble_sg_service_init(ble_sg_t *p_sg);
@@ -86,21 +86,6 @@ void ble_sg_on_ble_evt(ble_sg_t *p_sg, ble_evt_t *p_ble_evt);
 /**@brief function for updating/notifying BLE of new value for main ADC (strain gauge or GSR data)
 *
 */
-void ble_sg_update_1ch(ble_sg_t *p_sg);
-
-/**@brief function for updating/notifying BLE of new value for temp sensor
-*
-*/
-void ble_sg_update_2ch(ble_sg_t *p_sg);
-
-/**@brief function for updating/notifying BLE of new value for main ADC (strain gauge or GSR data) for second device
-*
-*/
-void ble_sg_update_3ch(ble_sg_t *p_sg);
-
-/**@brief function for updating/notifying BLE of new value for temp sensor for second device
-*
-*/
-void ble_sg_update_4ch(ble_sg_t *p_sg);
+//void ble_sg_update_1ch(ble_sg_t *p_sg);
 
 #endif // BLE_SG_H__

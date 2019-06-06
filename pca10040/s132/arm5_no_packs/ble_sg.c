@@ -240,83 +240,26 @@ void ble_sg_service_init(ble_sg_t *p_sg) {
 
   //Add Characteristic:
   sg_ch1_char_add(p_sg);
-  sg_ch2_char_add(p_sg);
-  sg_ch3_char_add(p_sg);
-  sg_ch4_char_add(p_sg);
+//  sg_ch2_char_add(p_sg);
+//  sg_ch3_char_add(p_sg);
+//  sg_ch4_char_add(p_sg);
 }
 
-void ble_sg_update_1ch(ble_sg_t *p_sg) {
-  uint32_t err_code;
-  if (p_sg->conn_handle != BLE_CONN_HANDLE_INVALID) {
-    uint16_t hvx_len = SG_PACKET_LENGTH;
-    ble_gatts_hvx_params_t const hvx_params = {
-        .handle = p_sg->sg_ch1_handles.value_handle,
-        .type = BLE_GATT_HVX_NOTIFICATION,
-        .offset = 0,
-        .p_len = &hvx_len,
-        .p_data = p_sg->sg_ch1_buffer,
-    };
-    err_code = sd_ble_gatts_hvx(p_sg->conn_handle, &hvx_params);
-  }
-
-  if (err_code == NRF_ERROR_RESOURCES) {
-    NRF_LOG_INFO("sd_ble_gatts_hvx() ERR/RES: 0x%x\r\n", err_code);
-  }
-}
-
-void ble_sg_update_2ch(ble_sg_t *p_sg) {
-  uint32_t err_code;
-  if (p_sg->conn_handle != BLE_CONN_HANDLE_INVALID) {
-    uint16_t hvx_len = SG_PACKET_LENGTH_TMP;
-    ble_gatts_hvx_params_t const hvx_params = {
-        .handle = p_sg->sg_ch2_handles.value_handle,
-        .type = BLE_GATT_HVX_NOTIFICATION,
-        .offset = 0,
-        .p_len = &hvx_len,
-        .p_data = p_sg->sg_ch2_buffer,
-    };
-    err_code = sd_ble_gatts_hvx(p_sg->conn_handle, &hvx_params);
-  }
-
-  if (err_code == NRF_ERROR_RESOURCES) {
-    NRF_LOG_INFO("sd_ble_gatts_hvx() ERR/RES: 0x%x\r\n", err_code);
-  }
-}
-
-void ble_sg_update_3ch(ble_sg_t *p_sg) {
-  uint32_t err_code;
-  if (p_sg->conn_handle != BLE_CONN_HANDLE_INVALID) {
-    uint16_t hvx_len = SG_PACKET_LENGTH;
-    ble_gatts_hvx_params_t const hvx_params = {
-        .handle = p_sg->sg_ch3_handles.value_handle,
-        .type = BLE_GATT_HVX_NOTIFICATION,
-        .offset = 0,
-        .p_len = &hvx_len,
-        .p_data = p_sg->sg_ch1_buffer,
-    };
-    err_code = sd_ble_gatts_hvx(p_sg->conn_handle, &hvx_params);
-  }
-
-  if (err_code == NRF_ERROR_RESOURCES) {
-    NRF_LOG_INFO("sd_ble_gatts_hvx() ERR/RES: 0x%x\r\n", err_code);
-  }
-}
-
-void ble_sg_update_4ch(ble_sg_t *p_sg) {
-  uint32_t err_code;
-  if (p_sg->conn_handle != BLE_CONN_HANDLE_INVALID) {
-    uint16_t hvx_len = SG_PACKET_LENGTH_TMP;
-    ble_gatts_hvx_params_t const hvx_params = {
-        .handle = p_sg->sg_ch4_handles.value_handle,
-        .type = BLE_GATT_HVX_NOTIFICATION,
-        .offset = 0,
-        .p_len = &hvx_len,
-        .p_data = p_sg->sg_ch2_buffer,
-    };
-    err_code = sd_ble_gatts_hvx(p_sg->conn_handle, &hvx_params);
-  }
-
-  if (err_code == NRF_ERROR_RESOURCES) {
-    NRF_LOG_INFO("sd_ble_gatts_hvx() ERR/RES: 0x%x\r\n", err_code);
-  }
-}
+//void ble_sg_update_1ch(ble_sg_t *p_sg) {
+//  uint32_t err_code;
+//  if (p_sg->conn_handle != BLE_CONN_HANDLE_INVALID) {
+//    uint16_t hvx_len = SG_PACKET_LENGTH;
+//    ble_gatts_hvx_params_t const hvx_params = {
+//        .handle = p_sg->sg_ch1_handles.value_handle,
+//        .type = BLE_GATT_HVX_NOTIFICATION,
+//        .offset = 0,
+//        .p_len = &hvx_len,
+//        .p_data = p_sg->sg_ch1_buffer,
+//    };
+//    err_code = sd_ble_gatts_hvx(p_sg->conn_handle, &hvx_params);
+//  }
+//
+//  if (err_code == NRF_ERROR_RESOURCES) {
+//    NRF_LOG_INFO("sd_ble_gatts_hvx() ERR/RES: 0x%x\r\n", err_code);
+//  }
+//}
