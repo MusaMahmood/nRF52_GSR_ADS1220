@@ -1873,7 +1873,7 @@ Make sure APP_SDCARD_ENABLED = 1, SPI#_ENABLED = 1, and nrf_block_dev_sdc.c, app
 // <e> SAADC_ENABLED - nrf_drv_saadc - SAADC peripheral driver
 //==========================================================
 #ifndef SAADC_ENABLED
-#define SAADC_ENABLED 1
+#define SAADC_ENABLED 0
 #endif
 #if  SAADC_ENABLED
 // <o> SAADC_CONFIG_RESOLUTION  - Resolution
@@ -2157,7 +2157,7 @@ Make sure APP_SDCARD_ENABLED = 1, SPI#_ENABLED = 1, and nrf_block_dev_sdc.c, app
 // <e> SPI0_ENABLED - Enable SPI0 instance
 //==========================================================
 #ifndef SPI0_ENABLED
-#define SPI0_ENABLED 0
+#define SPI0_ENABLED 1
 #endif
 #if  SPI0_ENABLED
 // <q> SPI0_USE_EASY_DMA  - Use EasyDMA
@@ -3191,7 +3191,7 @@ Make sure APP_SDCARD_ENABLED = 1, SPI#_ENABLED = 1, and nrf_block_dev_sdc.c, app
 // <2=> 2 
 
 #ifndef APP_SDCARD_SPI_INSTANCE
-#define APP_SDCARD_SPI_INSTANCE 2
+#define APP_SDCARD_SPI_INSTANCE 0
 #endif
 
 // <o> APP_SDCARD_FREQ_INIT  - SPI frequency

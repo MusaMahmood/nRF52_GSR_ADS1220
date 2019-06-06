@@ -126,7 +126,7 @@ APP_TIMER_DEF(m_sampling_timer_id);
 #endif
 
 #if defined(APP_SDCARD_ENABLED) && APP_SDCARD_ENABLED == 1
-  #define FATFS_BUFFER_SIZE 3072
+  #define FATFS_BUFFER_SIZE 3000
   uint8_t fatfs_buffer_array[FATFS_BUFFER_SIZE];
   uint16_t fatfs_buffer_count = 0;
   static uint32_t m_timestamp_ms = 0;
@@ -825,29 +825,29 @@ static void fatfs_write(void) {
     return;
   }
 
-  NRF_LOG_INFO("\r\n Listing directory: /\r\n");
-  ff_result = f_opendir(&dir, "/");
-  if (ff_result) {
-    NRF_LOG_INFO("Directory listing failed!\r\n");
-    return;
-  }
-
-  do {
-    ff_result = f_readdir(&dir, &fno);
-    if (ff_result != FR_OK) {
-      NRF_LOG_INFO("Directory read failed.");
-      return;
-    }
-
-    if (fno.fname[0]) {
-      if (fno.fattrib & AM_DIR) {
-        NRF_LOG_RAW_INFO("   <DIR>   %s\r\n", (uint32_t)fno.fname);
-      } else {
-        NRF_LOG_RAW_INFO("%9lu  %s\r\n", fno.fsize, (uint32_t)fno.fname);
-      }
-    }
-  } while (fno.fname[0]);
-  NRF_LOG_RAW_INFO("\r\n");
+//  NRF_LOG_INFO("\r\n Listing directory: /\r\n");
+//  ff_result = f_opendir(&dir, "/");
+//  if (ff_result) {
+//    NRF_LOG_INFO("Directory listing failed!\r\n");
+//    return;
+//  }
+//
+//  do {
+//    ff_result = f_readdir(&dir, &fno);
+//    if (ff_result != FR_OK) {
+//      NRF_LOG_INFO("Directory read failed.");
+//      return;
+//    }
+//
+//    if (fno.fname[0]) {
+//      if (fno.fattrib & AM_DIR) {
+//        NRF_LOG_RAW_INFO("   <DIR>   %s\r\n", (uint32_t)fno.fname);
+//      } else {
+//        NRF_LOG_RAW_INFO("%9lu  %s\r\n", fno.fsize, (uint32_t)fno.fname);
+//      }
+//    }
+//  } while (fno.fname[0]);
+//  NRF_LOG_RAW_INFO("\r\n");
   //TODO: Write:
   static FIL file; 
   uint32_t bytes_written; 
@@ -926,6 +926,7 @@ int main(void) {
   while (1) {
     NRF_LOG_FLUSH();
     if (m_drdy_pin_handler) {
+      m_drdy_pin_handler = false;
       // Get current timestamp
       uint32_t timer_data_ticks = app_timer_cnt_get(); 
       // Convert to ms:
@@ -934,110 +935,75 @@ int main(void) {
         memcpy_fast(&fatfs_buffer_array[fatfs_buffer_count], (uint8_t *) &m_timestamp_ms, sizeof(m_timestamp_ms));
         fatfs_buffer_count += (sizeof(m_timestamp_ms)); 
       #endif 
-      m_drdy_pin_handler = false;
       gsr_value = get_gsr_data_int();
       m_calibration_flag = true;
       #if defined(APP_SDCARD_ENABLED) && APP_SDCARD_ENABLED == 1
         memcpy_fast(&fatfs_buffer_array[fatfs_buffer_count], (uint8_t *) &gsr_value, sizeof(gsr_value));
         fatfs_buffer_count += sizeof(gsr_value);
       #endif
-//      if ( ( (m_sg.sg_ch1_count % 9) == 0) && m_sg.sg_ch1_count != 0) {
-//        m_calibration_flag = true;
-//        m_calibration_index = m_sg.sg_ch1_count - 3;
-//      }
-//      if (m_sg.sg_ch1_count == SG_PACKET_LENGTH) { // mode 2
-//        m_sg.sg_ch1_count = 0;
-//        if (m_connected) {
-//#if DEVICE_NUMBER == 1
-//          ble_sg_update_1ch(&m_sg);
-//#elif DEVICE_NUMBER == 2
-//          ble_sg_update_3ch(&m_sg);
-//#endif
-//        }
-//      }
-      uint32_t sample = (uint32_t) tmp116_read_data(m_twi1);
+      uint16_t tmp_sample = tmp116_read_data(m_twi1);
       #if defined(APP_SDCARD_ENABLED) && APP_SDCARD_ENABLED == 1
-        memcpy_fast(&fatfs_buffer_array[fatfs_buffer_count], (uint8_t *)&sample, sizeof(sample));
-        fatfs_buffer_count += sizeof(sample);
+        memcpy_fast(&fatfs_buffer_array[fatfs_buffer_count], (uint8_t *)&tmp_sample, sizeof(tmp_sample));
+        fatfs_buffer_count += sizeof(tmp_sample);
       #endif
-//      memcpy_fast(&m_sg.sg_ch2_buffer[m_sg.sg_ch2_count], (uint8_t *)&sample, sizeof(sample));
-//      m_sg.sg_ch2_count += 2;
-//      if (m_sg.sg_ch2_count == SG_PACKET_LENGTH_TMP) {
-//        m_sg.sg_ch2_count = 0;
-//        if (m_connected) {
-//#if DEVICE_NUMBER == 1
-//          ble_sg_update_2ch(&m_sg);
-//#elif DEVICE_NUMBER == 2
-//          ble_sg_update_4ch(&m_sg);
-//#endif
-//        }
-//      }
-  if (m_calibration_flag) {
-    m_calibration_flag = false;
-    // Calibrate if out of range: Re-interpret 24-bit int as 32-bit int
-//      int32_t value = ((m_sg.sg_ch1_buffer[m_calibration_index] << 24) | (m_sg.sg_ch1_buffer[m_calibration_index + 1] << 16) | (m_sg.sg_ch1_buffer[m_calibration_index + 2] << 8)) >> 8;
-    NRF_LOG_INFO("Current Value: %d \r\n", gsr_value);
-    if (gsr_value < 409600 && !m_out_of_range_neg_flag) { // Out of range (V < 0.1)
-      NRF_LOG_INFO("[LOW THRESHOLD] - Value out of range! : %d\r\n", gsr_value);
-      m_out_of_range_neg_flag = true;
-    }
+      if (m_calibration_flag) {
+        m_calibration_flag = false;
+        // Calibrate if out of range: Re-interpret 24-bit int as 32-bit int
+//        NRF_LOG_INFO("Current Value: %d \r\n", gsr_value);
+        if (gsr_value < 409600 && !m_out_of_range_neg_flag) { // Out of range (V < 0.1)
+          NRF_LOG_INFO("[LOW THRESHOLD] - Value out of range! : %d\r\n", gsr_value);
+          m_out_of_range_neg_flag = true;
+        }
 
-    if (m_out_of_range_neg_flag) {
-      if (ad5242_rdac_val != 255)
-        ad5242_rdac_val++; // Increase resistance
-      ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
-      NRF_LOG_INFO("Updated RDAC Value to %d\r\n", ad5242_rdac_val);
-      if (gsr_value > 2457600) // if > 0.6V, stop
-        m_out_of_range_neg_flag = false;
-    }
+        if (m_out_of_range_neg_flag) {
+          if (ad5242_rdac_val != 255)
+            ad5242_rdac_val++; // Increase resistance
+          ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
+          NRF_LOG_INFO("Updated RDAC Value to %d\r\n", ad5242_rdac_val);
+          if (gsr_value > 2457600) // if > 0.6V, stop
+            m_out_of_range_neg_flag = false;
+        }
 
-    if (gsr_value > 6512639 && !m_out_of_range_pos_flag) { // Out of range (V > 1.59)
-      NRF_LOG_INFO("[HIGH THRESHOLD] - Value out of range! : %d\r\n", gsr_value);
-      m_out_of_range_pos_flag = true;
-    }
+        if (gsr_value > 6512639 && !m_out_of_range_pos_flag) { // Out of range (V > 1.59)
+          NRF_LOG_INFO("[HIGH THRESHOLD] - Value out of range! : %d\r\n", gsr_value);
+          m_out_of_range_pos_flag = true;
+        }
 
-    if (m_out_of_range_pos_flag) {
-      if (ad5242_rdac_val != 0)
-        ad5242_rdac_val--; // Decrease resistance
-      ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
-      NRF_LOG_INFO("Updated RDAC Value to %d\r\n", ad5242_rdac_val);
-      if (gsr_value < 4096000) // if < 1.0 V, stop
-        m_out_of_range_pos_flag = false;
-    }
-  }
+        if (m_out_of_range_pos_flag) {
+          if (ad5242_rdac_val != 0)
+            ad5242_rdac_val--; // Decrease resistance
+          ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
+          NRF_LOG_INFO("Updated RDAC Value to %d\r\n", ad5242_rdac_val);
+          if (gsr_value < 4096000) // if < 1.0 V, stop
+            m_out_of_range_pos_flag = false;
+        }
+      }
 #if defined(APP_SDCARD_ENABLED) && APP_SDCARD_ENABLED == 1
       // TODO: Once buffer is full, run fatfs write protocol (shut off everything and write).
       if (fatfs_buffer_count == FATFS_BUFFER_SIZE) {
         fatfs_buffer_count = 0;
         //Disable SPI for ADS1220:
-        ads1220_powerdown();
-        ads_spi_uninit();
+//        ads1220_powerdown();
+//        ads_spi_uninit();
         //Disable TWI for TMP116:
-        tmp116_twi_uninit(m_twi1);
+//        tmp116_twi_uninit(m_twi1);
         //Disable TWI for AD5242:
         ad5242_twi_uninit(m_twi); 
         //TODO: Init FATFS; Write; Disable FATFS
         fatfs_write();
-        m_fatfs_init = true;
-//        nrf_delay_ms(100);
+        app_sdc_uninit();
         // Re-enable AD5242 & set to ad5242_rdac_val
         ad5242_twi_init(m_twi);
         ad5242_write_rdac1_value(m_twi, ad5242_rdac_val);
         // Re-enable TMP116
-        tmp116_twi_init(m_twi1);
-        tmp116_set_mode(m_twi1);
-        // Re-enable ADS1220 and start cycle.
-        ads_spi_init();
-        ads1220_reset();              // Reset to ensure device is properly working
-        ads1220_init_default_regs();  // Write default registers
-        ads1220_start_sync();         // start converting in continuous mode
-      }
-    }
+//        tmp116_twi_init(m_twi1);
+//        tmp116_set_mode(m_twi1);
+      } // if (fatfs_buffer_count == FATFS_BUFFER_SIZE)
 #endif
-    
-  }
+    } // if (m_drdy_pin_handler)
+  } // while(1);
 #endif
-}
+} // main();
 
 /**
  * @}
